@@ -24,13 +24,13 @@
     </header>
 
     <nav class="formatbar" aria-label="常用排版设置">
-      <div class="formatbar-label"><span>排版</span><strong>一处调整，全篇生效</strong></div>
+      <div class="formatbar-label"><strong>排版</strong></div>
       <label class="quick-control font-control"><span>字体</span><select id="fontSelect">
         <option value="kaiti">楷体</option><option value="songti">宋体</option><option value="fangsong">仿宋</option><option value="heiti">黑体</option><option value="pingfang">苹方</option>
       </select></label>
-      <label class="quick-control range-control"><span>字号 <span class="unit-input"><input id="fontSizeNumber" type="number" min="8" max="14" step="0.1" value="10.1" /><em>pt</em></span></span><input id="fontSizeRange" type="range" min="8" max="14" step="0.1" value="10.1" /></label>
-      <label class="quick-control range-control"><span>行距 <output id="lineHeightValue">1.33</output></span><input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" /></label>
-      <label class="quick-control range-control"><span>横线 <span class="unit-input"><input id="ruleWidthNumber" type="number" min="0.5" max="6" step="0.1" value="2.2" /><em>pt</em></span></span><input id="ruleWidthRange" type="range" min="0.5" max="6" step="0.1" value="2.2" /></label>
+      <label class="quick-control range-control"><span>字号</span><input id="fontSizeRange" type="range" min="8" max="14" step="0.1" value="10.1" /><span class="unit-input"><input id="fontSizeNumber" type="number" min="8" max="14" step="0.1" value="10.1" /><em>pt</em></span></label>
+      <label class="quick-control range-control"><span>行距</span><input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" /><output id="lineHeightValue">1.33</output></label>
+      <label class="quick-control range-control"><span>横线</span><input id="ruleWidthRange" type="range" min="0.5" max="6" step="0.1" value="2.2" /><span class="unit-input"><input id="ruleWidthNumber" type="number" min="0.5" max="6" step="0.1" value="2.2" /><em>pt</em></span></label>
       <span class="formatbar-note">楷体为参考模板字体 · 英文与数字使用 Times New Roman</span>
     </nav>
 
