@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>A4 简历排版器 · 费婉燕</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#editor" aria-label="A4 简历排版器">
+        <span class="brand-mark">履</span>
+        <span><strong>A4 简历排版器</strong><small>本地编辑 · 单页打印</small></span>
+      </a>
+      <div class="top-actions">
+        <span id="saveState" class="save-state"><i></i> 已保存到本机</span>
+        <button id="saveLocalBtn" class="button ghost" type="button">保存本地副本</button>
+        <button id="resetBtn" class="button ghost" type="button">恢复初始内容</button>
+        <button id="exportWordBtn" class="button ghost export-button" type="button">导出 Word</button>
+        <button id="exportPdfBtn" class="button primary export-button" type="button">导出 PDF</button>
+      </div>
+    </header>
+
+    <nav class="formatbar" aria-label="快捷格式工具栏">
+      <button id="addSectionBtn" class="tool text-tool" type="button">＋ 新增板块</button>
+      <span class="tool-divider"></span>
+      <label class="quick-control"><span>字体</span><select id="fontQuickSelect">
+        <option value="kaiti">楷体</option><option value="songti">宋体</option><option value="fangsong">仿宋</option><option value="heiti">黑体</option><option value="pingfang">苹方</option>
+      </select></label>
+      <label class="quick-control range-control"><span>行高 <output id="lineHeightValue">1.33</output></span><input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" /></label>
+      <label class="quick-control range-control"><span>字号 <output id="fontSizeQuickValue">10.1pt</output></span><input id="fontSizeQuickRange" type="range" min="8" max="14" step="0.1" value="10.1" /></label>
+      <label class="quick-control range-control"><span>横线 <output id="ruleWidthQuickValue">2.2pt</output></span><input id="ruleWidthQuickRange" type="range" min="0.5" max="6" step="0.1" value="2.2" /></label>
+      <label class="quick-control range-control"><span>照片 <output id="photoQuickValue">100%</output></span><input id="photoQuickRange" type="range" min="100" max="240" value="100" /></label>
+      <span class="tool-divider"></span>
+      <span class="selection-label">选区</span>
+      <button class="tool icon-tool" type="button" data-command="bold" title="加粗所选文字"><strong>B</strong></button>
+      <button class="tool icon-tool" type="button" data-command="italic" title="倾斜所选文字"><em>I</em></button>
+      <button class="tool icon-tool" type="button" data-command="arrow" title="在光标处插入箭头">➤</button>
+      <button class="tool icon-tool" type="button" data-command="smaller" title="缩小所选文字">A−</button>
+      <button class="tool icon-tool" type="button" data-command="larger" title="放大所选文字">A＋</button>
+      <button class="tool icon-tool" type="button" data-command="undo" title="撤销">↶</button>
+      <select id="markerTargetSelect" class="marker-target" title="选择要调整符号的模块"><option value="experience">实习</option><option value="projects">项目</option><option value="skills">技能</option></select>
+      <select id="markerQuickSelect" class="marker-quick" title="设置所选模块的条目标记"></select>
+    </nav>
+
+    <main id="editor" class="workspace">
+      <aside class="panel left-panel" aria-label="内容工具">
+        <section class="panel-section intro">
+          <span class="eyebrow">CONTENT</span>
+          <h1>内容工具</h1>
+          <p>直接点击纸面文字编辑。所有内容与照片只保存在当前浏览器。</p>
+        </section>
+
+        <section class="panel-section">
+          <h2>Markdown</h2>
+          <label class="dropzone" id="markdownDropzone" for="markdownInput">
+            <span class="drop-icon">MD</span>
+            <strong>导入约定格式</strong>
+            <small>点击选择或拖入 .md 文件</small>
+          </label>
+          <input id="markdownInput" type="file" accept=".md,text/markdown,text/plain" hidden />
+          <div class="split-actions">
+            <button id="downloadMdBtn" class="button secondary" type="button">导出当前内容</button>
+            <a class="button text-button" href="示例简历.md" download>下载示例</a>
+          </div>
+          <p class="hint">导入只替换字段和条目，不改变字号、间距与网格。</p>
+        </section>
+
+        <section class="panel-section">
+          <h2>本地保存</h2>
+          <p class="hint">每次编辑都会自动保存在当前浏览器。也可下载含照片与样式的完整副本。</p>
+          <button id="downloadBackupBtn" class="button secondary full compact" type="button">下载 .resume 备份</button>
+          <label class="button text-upload full" for="backupInput">从本地副本恢复</label>
+          <input id="backupInput" type="file" accept=".resume,.json,application/json" hidden />
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title-row">
+            <h2>编辑网格</h2>
+            <label class="switch"><input id="gridToggle" type="checkbox" checked /><span></span></label>
+          </div>
+          <p class="hint">模拟 Word 表格网格线，仅编辑时显示，打印自动隐藏。</p>
+        </section>
+
+        <section class="panel-section privacy">
+          <span class="privacy-icon">⌂</span>
+          <div><strong>完全本地处理</strong><p>无上传、无追踪、无网络请求。</p></div>
+        </section>
+      </aside>
+
+      <section class="stage" aria-label="A4 简历画布">
+        <div class="stage-ruler" aria-hidden="true"><span>A4 · 210 × 297 mm</span></div>
+        <div id="paper" class="paper show-grid">
+          <div id="resumeRoot" class="resume-root"></div>
+          <div id="overflowLine" class="overflow-line" aria-hidden="true"><span>单页边界</span></div>
+        </div>
+        <div id="overflowToast" class="overflow-toast" role="status" aria-live="polite"></div>
+      </section>
+
+      <aside class="panel right-panel" aria-label="样式、照片与页面状态">
+        <section class="panel-section intro">
+          <span class="eyebrow">TYPOGRAPHY</span>
+          <h1>排版样式</h1>
+          <p>参考模板中文为<strong>楷体 KaiTi</strong>，英文与数字为 Times New Roman。</p>
+        </section>
+        <section class="panel-section style-tools">
+          <label class="control-label" for="fontSelect">字体</label>
+          <select id="fontSelect" class="select-control">
+            <option value="kaiti">楷体（参考模板）</option>
+            <option value="songti">宋体</option>
+            <option value="fangsong">仿宋</option>
+            <option value="heiti">黑体</option>
+            <option value="pingfang">苹方</option>
+          </select>
+
+          <label class="slider-label" for="fontSizeRange"><span>正文字号</span><span class="unit-input"><input id="fontSizeNumber" type="number" min="8" max="14" step="0.1" value="10.1" /><em>pt</em></span></label>
+          <input id="fontSizeRange" type="range" min="8" max="14" step="0.1" value="10.1" />
+
+          <label class="slider-label" for="ruleWidthRange"><span>横线粗细</span><span class="unit-input"><input id="ruleWidthNumber" type="number" min="0.5" max="6" step="0.1" value="2.2" /><em>pt</em></span></label>
+          <input id="ruleWidthRange" type="range" min="0.5" max="6" step="0.1" value="2.2" />
+
+          <div class="marker-controls">
+            <label for="experienceMarker">实习序号</label>
+            <select id="experienceMarker" class="select-control marker-select"></select>
+            <label for="projectMarker">项目符号</label>
+            <select id="projectMarker" class="select-control marker-select"></select>
+            <label for="skillsMarker">技能序号</label>
+            <select id="skillsMarker" class="select-control marker-select"></select>
+          </div>
+          <button id="resetStyleBtn" class="button secondary full compact" type="button">恢复模板样式</button>
+        </section>
+
+        <section class="panel-section subsection-intro">
+          <span class="eyebrow">PORTRAIT</span>
+          <h2>证件照</h2>
+          <p>替换后可直接在照片框内拖动位置。</p>
+        </section>
+        <section class="panel-section photo-tools">
+          <label class="button upload" for="photoInput">上传照片</label>
+          <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+          <label class="slider-label" for="photoScale"><span>缩放</span><output id="scaleValue">100%</output></label>
+          <input id="photoScale" type="range" min="100" max="240" value="100" />
+          <button id="photoResetBtn" class="button secondary full" type="button">还原照片位置</button>
+          <p class="hint">支持 JPG、PNG、WebP。照片数据保留在浏览器本地。</p>
+        </section>
+
+        <section class="panel-section page-status">
+          <span class="eyebrow">PAGE CHECK</span>
+          <div id="pageBadge" class="page-badge ok"><i></i><strong>单页范围内</strong></div>
+          <p id="pageDetail">内容未超出 A4 打印边界。</p>
+          <dl>
+            <div><dt>纸张</dt><dd>A4 纵向</dd></div>
+            <div><dt>页边距</dt><dd>14.6 mm</dd></div>
+            <div><dt>导出页数</dt><dd>固定 1 页</dd></div>
+          </dl>
+        </section>
+
+        <section class="panel-section print-note">
+          <strong>导出说明</strong>
+          <p>PDF 会按当前纸面直接下载；Word 为可继续编辑的 DOCX 文件。两种格式均在浏览器本地生成。</p>
+        </section>
+
+        <section class="panel-section converter">
+          <span class="eyebrow">DOCUMENT CONVERT</span>
+          <h2>简历版本转换</h2>
+          <label class="button secondary full compact" for="sourceResumeInput">选择 PDF / DOCX</label>
+          <input id="sourceResumeInput" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+          <p id="sourceResumeName" class="converter-file">尚未选择文件</p>
+          <label class="control-label converter-label" for="convertMode">转换模式</label>
+          <select id="convertMode" class="select-control">
+            <option value="structured">智能识别标题</option>
+            <option value="faithful">忠实保留段落</option>
+            <option value="prompt">生成转换提示词</option>
+          </select>
+          <div class="converter-actions">
+            <button id="convertMdBtn" class="button secondary" type="button" disabled>转 Markdown</button>
+            <button id="convertJsonBtn" class="button secondary" type="button" disabled>转 JSON</button>
+          </div>
+          <p class="hint">文档仅在当前浏览器读取；转换结果会下载到本地，不上传服务器。</p>
+        </section>
+      </aside>
+    </main>
+
+    <div id="modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <span id="modalIcon" class="modal-icon">!</span>
+        <h2 id="modalTitle">提示</h2>
+        <p id="modalMessage"></p>
+        <div class="modal-actions">
+          <button id="modalCancel" class="button secondary" type="button">取消</button>
+          <button id="modalConfirm" class="button primary" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="vendor/jszip.min.js"></script>
+    <script src="vendor/html2canvas.min.js"></script>
+    <script src="vendor/jspdf.umd.min.js"></script>
+    <script src="vendor/docx.iife.js"></script>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
