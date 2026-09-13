@@ -38,12 +38,26 @@ button, label, input[type="range"] { -webkit-tap-highlight-color: transparent; }
 .save-state { margin-right: 8px; color: #bdb8ad; font-size: 12px; white-space: nowrap; }
 .save-state i, .page-badge i { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #61bd92; }
 
+.formatbar { position: sticky; top: 64px; z-index: 45; min-height: 62px; padding: 7px 20px; display: flex; align-items: center; gap: 18px; color: #3d3932; background: rgba(251,250,246,.97); border-bottom: 1px solid #d7d3ca; box-shadow: 0 4px 14px rgba(35,31,25,.05); backdrop-filter: blur(14px); white-space: nowrap; }
+.formatbar-label { width: 148px; flex: 0 0 auto; padding-right: 18px; border-right: 1px solid #dedad1; }
+.formatbar-label span, .formatbar-label strong { display: block; }
+.formatbar-label span { color: var(--accent); font-size: 8px; font-weight: 700; letter-spacing: .16em; }
+.formatbar-label strong { margin-top: 3px; font-size: 10px; font-weight: 550; }
+.quick-control { height: 46px; display: flex; flex-direction: column; justify-content: center; gap: 5px; color: #706a61; font-size: 9px; }
+.quick-control > span { min-height: 17px; display: flex; align-items: center; justify-content: space-between; }
+.quick-control select { width: 108px; height: 28px; padding: 0 8px; color: #2e2b26; background: #fff; border: 1px solid #cec9bf; border-radius: 0; font-size: 11px; }
+.quick-control.range-control { width: 156px; }
+.quick-control input[type="range"] { width: 100%; margin: 0; }
+.quick-control .unit-input { height: 17px; margin-left: 12px; }
+.quick-control .unit-input input { width: 37px; padding: 0; }
+.formatbar-note { margin-left: auto; color: #8b857b; font-family: var(--resume); font-size: 9px; }
+
 .tool { height: 32px; min-width: 32px; display: inline-grid; place-items: center; color: #403c35; background: #fff; border: 1px solid #d2cdc3; border-radius: 4px; cursor: pointer; }
 .tool:hover { color: var(--accent); border-color: #a9a297; }
 .tool.icon-tool { font-family: var(--latin), var(--ui); font-size: 13px; }
 
-.workspace { min-height: calc(100vh - 64px); display: grid; grid-template-columns: 286px minmax(820px, 1fr) 274px; }
-.panel { position: sticky; top: 64px; height: calc(100vh - 64px); overflow: auto; background: var(--panel); }
+.workspace { min-height: calc(100vh - 126px); display: grid; grid-template-columns: 286px minmax(820px, 1fr) 274px; }
+.panel { position: sticky; top: 126px; height: calc(100vh - 126px); overflow: auto; background: var(--panel); }
 .left-panel { border-right: 1px solid #d5d1c8; }
 .right-panel { border-left: 1px solid #d5d1c8; }
 .panel-section { padding: 18px 20px 20px; border-bottom: 1px solid #ddd9d0; }
@@ -182,6 +196,9 @@ input[type="range"] { width: 100%; margin: 10px 0 16px; accent-color: var(--acce
 .page-status dl div { display: flex; justify-content: space-between; padding: 7px 0; border-top: 1px solid #ddd9d0; font-size: 10px; }
 .page-status dt { color: var(--muted); }
 .page-status dd { margin: 0; font-family: var(--latin), var(--ui); }
+.page-status-top { position: sticky; top: 0; z-index: 3; padding-top: 18px; background: #f3f0e9; box-shadow: 0 8px 16px rgba(46,40,31,.06); }
+.page-status-top h1 { font-size: 20px; }
+.page-status-top .eyebrow { margin-bottom: 3px; }
 .print-note { background: #eeebe4; }
 
 .version-create { margin-top: 17px; }
@@ -236,12 +253,16 @@ details[open] > summary { color: var(--accent); }
   .stage { min-width: 800px; padding-inline: 14px; }
   .topbar { padding-inline: 18px; }
   .current-context { min-width: 180px; }
+  .formatbar { gap: 12px; padding-inline: 16px; }
+  .formatbar-label { width: 124px; }
+  .quick-control.range-control { width: 135px; }
+  .formatbar-note { display: none; }
 }
 
 @media print {
   @page { size: A4 portrait; margin: 0; }
   html, body { width: 210mm; height: 297mm; margin: 0 !important; background: #fff !important; }
-  .topbar, .panel, .stage-ruler, .overflow-toast, .overflow-line, .portrait-hint, .modal, .paper-add, .paper-remove { display: none !important; }
+  .topbar, .formatbar, .panel, .stage-ruler, .overflow-toast, .overflow-line, .portrait-hint, .modal, .paper-add, .paper-remove { display: none !important; }
   .workspace, .stage { display: block; min-width: 0; width: 210mm; height: 297mm; margin: 0; padding: 0; overflow: hidden; background: #fff; }
   .paper { width: 210mm; height: 297mm; margin: 0; overflow: hidden; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; break-after: avoid; page-break-after: avoid; }
   .paper.show-grid .edit-cell, [contenteditable="true"] { outline: none !important; background: transparent !important; }

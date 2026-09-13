@@ -23,6 +23,17 @@
       </div>
     </header>
 
+    <nav class="formatbar" aria-label="常用排版设置">
+      <div class="formatbar-label"><span>排版</span><strong>一处调整，全篇生效</strong></div>
+      <label class="quick-control font-control"><span>字体</span><select id="fontSelect">
+        <option value="kaiti">楷体</option><option value="songti">宋体</option><option value="fangsong">仿宋</option><option value="heiti">黑体</option><option value="pingfang">苹方</option>
+      </select></label>
+      <label class="quick-control range-control"><span>字号 <span class="unit-input"><input id="fontSizeNumber" type="number" min="8" max="14" step="0.1" value="10.1" /><em>pt</em></span></span><input id="fontSizeRange" type="range" min="8" max="14" step="0.1" value="10.1" /></label>
+      <label class="quick-control range-control"><span>行距 <output id="lineHeightValue">1.33</output></span><input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" /></label>
+      <label class="quick-control range-control"><span>横线 <span class="unit-input"><input id="ruleWidthNumber" type="number" min="0.5" max="6" step="0.1" value="2.2" /><em>pt</em></span></span><input id="ruleWidthRange" type="range" min="0.5" max="6" step="0.1" value="2.2" /></label>
+      <span class="formatbar-note">楷体为参考模板字体 · 英文与数字使用 Times New Roman</span>
+    </nav>
+
     <main id="editor" class="workspace">
       <aside class="panel left-panel" aria-label="简历版本与岗位信息">
         <section class="panel-section intro">
@@ -85,10 +96,15 @@
       </section>
 
       <aside class="panel right-panel" aria-label="编辑与排版设置">
-        <section class="panel-section intro">
-          <span class="eyebrow">FORMAT</span>
-          <h1>编辑与排版</h1>
-          <p>先在纸面选中文字，再使用下方工具。全局排版仅保留一套控件。</p>
+        <section class="panel-section page-status page-status-top">
+          <div class="section-title-row"><div><span class="eyebrow">PAGE CHECK</span><h1>页面检查</h1></div><label class="switch" title="显示编辑网格"><input id="gridToggle" type="checkbox" checked /><span></span></label></div>
+          <div id="pageBadge" class="page-badge ok"><i></i><strong>单页范围内</strong></div>
+          <p id="pageDetail">内容未超出 A4 单页边界。</p>
+          <dl>
+            <div><dt>纸张</dt><dd>A4 纵向</dd></div>
+            <div><dt>页边距</dt><dd>14.6 mm</dd></div>
+            <div><dt>导出页数</dt><dd>固定 1 页</dd></div>
+          </dl>
         </section>
         <section class="panel-section selection-tools">
           <div class="section-title-row"><h2>所选文字</h2><button id="addSectionBtn" class="text-action" type="button">＋ 新增板块</button></div>
@@ -102,24 +118,7 @@
           </div>
         </section>
         <section class="panel-section style-tools">
-          <label class="control-label" for="fontSelect">字体</label>
-          <select id="fontSelect" class="select-control">
-            <option value="kaiti">楷体（参考模板）</option>
-            <option value="songti">宋体</option>
-            <option value="fangsong">仿宋</option>
-            <option value="heiti">黑体</option>
-            <option value="pingfang">苹方</option>
-          </select>
-
-          <label class="slider-label" for="fontSizeRange"><span>正文字号</span><span class="unit-input"><input id="fontSizeNumber" type="number" min="8" max="14" step="0.1" value="10.1" /><em>pt</em></span></label>
-          <input id="fontSizeRange" type="range" min="8" max="14" step="0.1" value="10.1" />
-
-          <label class="slider-label" for="lineHeightRange"><span>行距</span><output id="lineHeightValue">1.33</output></label>
-          <input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" />
-
-          <label class="slider-label" for="ruleWidthRange"><span>横线粗细</span><span class="unit-input"><input id="ruleWidthNumber" type="number" min="0.5" max="6" step="0.1" value="2.2" /><em>pt</em></span></label>
-          <input id="ruleWidthRange" type="range" min="0.5" max="6" step="0.1" value="2.2" />
-
+          <h2>符号样式</h2>
           <div class="marker-controls">
             <label for="experienceMarker">实习序号</label>
             <select id="experienceMarker" class="select-control marker-select"></select>
@@ -139,17 +138,6 @@
           <input id="photoScale" type="range" min="100" max="240" value="100" />
           <button id="photoResetBtn" class="button secondary full" type="button">还原照片位置</button>
           <p class="hint">支持 JPG、PNG、WebP。照片数据保留在浏览器本地。</p>
-        </section>
-
-        <section class="panel-section page-status">
-          <div class="section-title-row"><h2>页面检查</h2><label class="switch" title="显示编辑网格"><input id="gridToggle" type="checkbox" checked /><span></span></label></div>
-          <div id="pageBadge" class="page-badge ok"><i></i><strong>单页范围内</strong></div>
-          <p id="pageDetail">内容未超出 A4 打印边界。</p>
-          <dl>
-            <div><dt>纸张</dt><dd>A4 纵向</dd></div>
-            <div><dt>页边距</dt><dd>14.6 mm</dd></div>
-            <div><dt>导出页数</dt><dd>固定 1 页</dd></div>
-          </dl>
         </section>
 
         <details class="panel-section converter">
