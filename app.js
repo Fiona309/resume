@@ -1,5 +1,6 @@
 (() => {
-  const STORAGE_KEY = "a4-resume-editor.feiwanyan.v3";
+  const LEGACY_STORAGE_KEY = "a4-resume-editor.feiwanyan.v3";
+  const STORAGE_KEY = "a4-resume-editor.workspace.v1";
   const PHOTO_LIMIT = 3 * 1024 * 1024;
   const FONT_STACKS = {
     kaiti: '"Kaiti SC", STKaiti, KaiTi, "Songti SC", serif',
@@ -18,28 +19,52 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[ch]);
 
-  let state = loadState();
+  let workspace = loadWorkspace();
+  let state = activeVersion().data;
   let saveTimer = null;
   let modalAction = null;
   let drag = null;
   let convertedDocument = null;
 
-  function loadState() {
+  function normalizeResume(candidate) {
+    const source = candidate || {};
+    return {
+      ...clone(window.INITIAL_RESUME), ...source,
+      appearance: { ...clone(window.INITIAL_RESUME.appearance), ...(source.appearance || {}), markers: { ...window.INITIAL_RESUME.appearance.markers, ...(source.appearance?.markers || {}) } },
+      customSections: source.customSections || [], rich: source.rich || {}
+    };
+  }
+
+  function loadWorkspace() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return clone(window.INITIAL_RESUME);
-      const parsed = JSON.parse(saved);
-      return {
-        ...clone(window.INITIAL_RESUME), ...parsed,
-        appearance: { ...clone(window.INITIAL_RESUME.appearance), ...(parsed.appearance || {}), markers: { ...window.INITIAL_RESUME.appearance.markers, ...(parsed.appearance?.markers || {}) } },
-        customSections: parsed.customSections || [], rich: parsed.rich || {}
-      };
-    } catch { return clone(window.INITIAL_RESUME); }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const versions = (parsed.versions || []).map(item => ({ ...item, data: normalizeResume(item.data) }));
+        if (versions.length) return { ...parsed, activeId: versions.some(item => item.id === parsed.activeId) ? parsed.activeId : versions[0].id, versions };
+      }
+      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+      const data = legacy ? normalizeResume(JSON.parse(legacy)) : normalizeResume(window.INITIAL_RESUME);
+      return { activeId: "master", versions: [{ id: "master", name: "母版简历", company: "", role: "", jd: "", isMaster: true, createdAt: new Date().toISOString(), data }] };
+    } catch {
+      return { activeId: "master", versions: [{ id: "master", name: "母版简历", company: "", role: "", jd: "", isMaster: true, createdAt: new Date().toISOString(), data: normalizeResume(window.INITIAL_RESUME) }] };
+    }
+  }
+
+  function activeVersion() {
+    return workspace.versions.find(item => item.id === workspace.activeId) || workspace.versions[0];
+  }
+
+  function setActiveState(nextState) {
+    state = normalizeResume(nextState);
+    activeVersion().data = state;
   }
 
   function persist() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      activeVersion().data = state;
+      activeVersion().updatedAt = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace));
       $("#saveState").innerHTML = "<i></i> 已保存到本机";
     } catch {
       $("#saveState").textContent = "本机存储空间不足";
@@ -74,7 +99,87 @@
     return `<li><span class="list-marker" aria-hidden="true">${markerText(index, markerStyle)}</span><span class="edit-cell list-content" contenteditable="true" spellcheck="false" data-path="${path}">${content}</span></li>`;
   }
 
+  function renderVersionUI() {
+    const current = activeVersion();
+    $("#currentVersionTitle").textContent = current.name || "未命名版本";
+    $("#versionKind").textContent = current.isMaster ? "母版" : "岗位版";
+    $("#versionKind").classList.toggle("job", !current.isMaster);
+    $("#versionNameInput").value = current.name || "";
+    $("#companyInput").value = current.company || "";
+    $("#roleInput").value = current.role || "";
+    $("#jdInput").value = current.jd || "";
+    $("#jdCount").textContent = `${(current.jd || "").length} 字`;
+    $("#deleteVersionBtn").disabled = Boolean(current.isMaster);
+    $("#versionList").innerHTML = workspace.versions.map(item => {
+      const meta = item.isMaster ? "完整经历库" : [item.company, item.role].filter(Boolean).join(" · ") || "待填写公司与岗位";
+      return `<button class="version-item ${item.id === current.id ? "active" : ""}" type="button" data-version-id="${escapeHtml(item.id)}">
+        <span class="version-symbol">${item.isMaster ? "母" : String(workspace.versions.filter(version => !version.isMaster).indexOf(item) + 1).padStart(2, "0")}</span>
+        <span><strong>${escapeHtml(item.name || "未命名版本")}</strong><small>${escapeHtml(meta)}</small></span>
+      </button>`;
+    }).join("");
+    $$('[data-version-id]').forEach(button => button.addEventListener("click", () => switchVersion(button.dataset.versionId)));
+  }
+
+  function switchVersion(id) {
+    if (id === workspace.activeId) return;
+    activeVersion().data = state;
+    workspace.activeId = id;
+    state = activeVersion().data;
+    render();
+    persist();
+    $(".stage").scrollTop = 0;
+  }
+
+  function createVersion(source = workspace.versions.find(item => item.isMaster)?.data || state, label = "新岗位版本") {
+    const number = workspace.versions.filter(item => !item.isMaster).length + 1;
+    const version = { id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `${label} ${number}`, company: "", role: "", jd: "", isMaster: false, createdAt: new Date().toISOString(), data: clone(source) };
+    activeVersion().data = state;
+    workspace.versions.push(version);
+    workspace.activeId = version.id;
+    state = version.data;
+    render();
+    persist();
+    $("#versionNameInput").select();
+  }
+
+  function duplicateVersion() {
+    const current = activeVersion();
+    const version = { ...clone(current), id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `${current.name} 副本`, isMaster: false, createdAt: new Date().toISOString() };
+    workspace.versions.push(version);
+    workspace.activeId = version.id;
+    state = version.data;
+    render();
+    persist();
+  }
+
+  function deleteVersion() {
+    const current = activeVersion();
+    if (current.isMaster) return;
+    showModal("删除这个岗位版本？", `“${current.name}”以及其中保存的 JD 和简历修改都会被删除。`, () => {
+      workspace.versions = workspace.versions.filter(item => item.id !== current.id);
+      workspace.activeId = workspace.versions.find(item => item.isMaster)?.id || workspace.versions[0].id;
+      state = activeVersion().data;
+      render();
+      persist();
+    });
+  }
+
+  function updateVersionMeta(key, value) {
+    activeVersion()[key] = value;
+    if (key === "jd") $("#jdCount").textContent = `${value.length} 字`;
+    if (key === "name") {
+      $("#currentVersionTitle").textContent = value || "未命名版本";
+      $(".version-item.active strong").textContent = value || "未命名版本";
+    }
+    if (key === "company" || key === "role") {
+      const current = activeVersion();
+      $(".version-item.active small").textContent = [current.company, current.role].filter(Boolean).join(" · ") || "待填写公司与岗位";
+    }
+    scheduleSave();
+  }
+
   function render() {
+    renderVersionUI();
     const root = $("#resumeRoot");
     root.innerHTML = `
       <header class="resume-header" data-module="个人信息">
@@ -152,22 +257,13 @@
     root.style.setProperty("--body-line", appearance.lineHeight);
     root.style.setProperty("--rule-width", `${appearance.ruleWidth}pt`);
     if ($("#fontSelect")) $("#fontSelect").value = appearance.font;
-    if ($("#fontQuickSelect")) $("#fontQuickSelect").value = appearance.font;
     syncNumberRange("fontSize", appearance.fontSize);
-    if ($("#fontSizeQuickRange")) $("#fontSizeQuickRange").value = appearance.fontSize;
-    if ($("#fontSizeQuickValue")) $("#fontSizeQuickValue").textContent = `${appearance.fontSize}pt`;
     if ($("#lineHeightRange")) $("#lineHeightRange").value = appearance.lineHeight;
     if ($("#lineHeightValue")) $("#lineHeightValue").textContent = Number(appearance.lineHeight).toFixed(2);
     syncNumberRange("ruleWidth", appearance.ruleWidth);
-    if ($("#ruleWidthQuickRange")) $("#ruleWidthQuickRange").value = appearance.ruleWidth;
-    if ($("#ruleWidthQuickValue")) $("#ruleWidthQuickValue").textContent = `${appearance.ruleWidth}pt`;
     if ($("#experienceMarker")) $("#experienceMarker").value = appearance.markers.experience;
     if ($("#projectMarker")) $("#projectMarker").value = appearance.markers.projects;
     if ($("#skillsMarker")) $("#skillsMarker").value = appearance.markers.skills;
-    if ($("#markerQuickSelect")) {
-      const target = $("#markerTargetSelect")?.value || "experience";
-      $("#markerQuickSelect").value = appearance.markers[target];
-    }
     requestAnimationFrame(checkOverflow);
   }
 
@@ -229,8 +325,6 @@
     img.style.transform = `translate(calc(-50% + ${state.photo.x}px), calc(-50% + ${state.photo.y}px)) scale(${state.photo.scale})`;
     $("#photoScale").value = Math.round(state.photo.scale * 100);
     $("#scaleValue").textContent = `${Math.round(state.photo.scale * 100)}%`;
-    if ($("#photoQuickRange")) $("#photoQuickRange").value = Math.round(state.photo.scale * 100);
-    if ($("#photoQuickValue")) $("#photoQuickValue").textContent = `${Math.round(state.photo.scale * 100)}%`;
   }
 
   function bindPaperActions() {
@@ -396,7 +490,7 @@
     if (!next) return;
     next.photo = state.photo;
     next.appearance = state.appearance;
-    state = next;
+    setActiveState(next);
     render(); persist();
     showModal("导入完成", "简历内容已替换，排版、字号、网格和照片位置保持不变。", null, false);
   }
@@ -456,6 +550,12 @@
     return String(name || "简历").replace(/[\\/:*?"<>|]/g, "-").trim() || "简历";
   }
 
+  function exportStem() {
+    const current = activeVersion();
+    const context = current.isMaster ? "母版" : [current.company, current.role].filter(Boolean).join("-") || current.name;
+    return safeFilename(`${state.profile.name}-${context}-简历`);
+  }
+
   async function withExportButton(button, busyText, task) {
     const original = button.textContent;
     button.disabled = true;
@@ -500,7 +600,7 @@
       const pdf = new window.jspdf.jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
       pdf.setProperties({ title: `${state.profile.name} 简历`, subject: "A4 简历", creator: "A4 简历排版器" });
       pdf.addImage(canvas.toDataURL("image/jpeg", .96), "JPEG", 0, 0, 210, 297, undefined, "FAST");
-      pdf.save(`${safeFilename(state.profile.name)}-简历.pdf`);
+      pdf.save(`${exportStem()}.pdf`);
     } finally {
       paper.classList.remove("is-exporting");
     }
@@ -659,7 +759,7 @@
   async function exportWord() {
     const { document: wordDocument, Packer } = await buildWordDocument();
     const blob = await Packer.toBlob(wordDocument);
-    downloadBlob(blob, `${safeFilename(state.profile.name)}-简历.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    downloadBlob(blob, `${exportStem()}.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   }
 
   function downloadBlob(content, filename, type) {
@@ -671,20 +771,26 @@
 
   function exportBackup() {
     persist();
-    const payload = { format: "a4-resume-editor", version: 1, savedAt: new Date().toISOString(), data: state };
-    downloadBlob(JSON.stringify(payload, null, 2), `${state.profile.name}-简历.resume`, "application/json;charset=utf-8");
+    const payload = { format: "a4-resume-editor-workspace", version: 2, savedAt: new Date().toISOString(), workspace };
+    downloadBlob(JSON.stringify(payload, null, 2), `${state.profile.name}-简历版本库.resume`, "application/json;charset=utf-8");
   }
 
   function importBackup(text) {
     try {
       const parsed = JSON.parse(text);
-      const candidate = parsed.data || parsed;
-      if (!candidate.profile || !Array.isArray(candidate.education) || !Array.isArray(candidate.experience)) throw new Error("invalid");
-      showModal("恢复本地副本？", "当前浏览器中的内容、照片和样式将替换为副本中的版本。", () => {
-        state = { ...clone(window.INITIAL_RESUME), ...candidate };
-        state.appearance = { ...clone(window.INITIAL_RESUME.appearance), ...(candidate.appearance || {}), markers: { ...window.INITIAL_RESUME.appearance.markers, ...(candidate.appearance?.markers || {}) } };
-        render(); persist();
-      });
+      const incomingWorkspace = parsed.workspace;
+      const candidate = parsed.data || (!incomingWorkspace ? parsed : null);
+      if (incomingWorkspace?.versions?.length) {
+        showModal("恢复完整版本库？", "当前母版、岗位版本和 JD 都会被备份文件替换。", () => {
+          workspace = { ...incomingWorkspace, versions: incomingWorkspace.versions.map(item => ({ ...item, data: normalizeResume(item.data) })) };
+          workspace.activeId = workspace.versions.some(item => item.id === workspace.activeId) ? workspace.activeId : workspace.versions[0].id;
+          state = activeVersion().data;
+          render(); persist();
+        });
+      } else {
+        if (!candidate?.profile || !Array.isArray(candidate.education) || !Array.isArray(candidate.experience)) throw new Error("invalid");
+        showModal("恢复到当前版本？", "备份中的文字、照片和样式将替换当前简历版本。", () => { setActiveState(candidate); render(); persist(); });
+      }
     } catch { showModal("副本无法读取", "请选择由本排版器导出的 .resume 或 JSON 文件。", null, false); }
   }
 
@@ -697,7 +803,7 @@
   }
 
   function populateMarkerControls() {
-    ["experienceMarker", "projectMarker", "skillsMarker", "markerQuickSelect"].forEach(id => {
+    ["experienceMarker", "projectMarker", "skillsMarker"].forEach(id => {
       $("#" + id).innerHTML = MARKER_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
     });
   }
@@ -719,6 +825,12 @@
 
   function wireControls() {
     populateMarkerControls();
+    $("#createVersionBtn").addEventListener("click", () => createVersion());
+    $("#duplicateVersionBtn").addEventListener("click", duplicateVersion);
+    $("#deleteVersionBtn").addEventListener("click", deleteVersion);
+    [["versionNameInput", "name"], ["companyInput", "company"], ["roleInput", "role"], ["jdInput", "jd"]].forEach(([id, key]) => {
+      $("#" + id).addEventListener("input", event => updateVersionMeta(key, event.target.value));
+    });
     $("#gridToggle").addEventListener("change", event => $("#paper").classList.toggle("show-grid", event.target.checked));
     $("#exportPdfBtn").addEventListener("click", () => runAfterOverflowCheck(() => withExportButton($("#exportPdfBtn"), "正在导出…", exportPdf)));
     $("#exportWordBtn").addEventListener("click", () => runAfterOverflowCheck(() => withExportButton($("#exportWordBtn"), "正在导出…", exportWord)));
@@ -726,28 +838,25 @@
     $("#addSectionBtn").addEventListener("click", addSection);
     $$('[data-command]').forEach(button => button.addEventListener("mousedown", event => event.preventDefault()));
     $$('[data-command]').forEach(button => button.addEventListener("click", () => applySelectionCommand(button.dataset.command)));
-    $("#saveLocalBtn").addEventListener("click", exportBackup);
     $("#downloadBackupBtn").addEventListener("click", exportBackup);
     $("#backupInput").addEventListener("change", event => event.target.files[0] && readFile(event.target.files[0], importBackup));
     $("#fontSelect").addEventListener("change", event => updateAppearance("font", event.target.value));
-    $("#fontQuickSelect").addEventListener("change", event => updateAppearance("font", event.target.value));
     ["fontSizeRange", "fontSizeNumber"].forEach(id => $("#" + id).addEventListener("input", event => updateAppearance("fontSize", event.target.value)));
-    $("#fontSizeQuickRange").addEventListener("input", event => updateAppearance("fontSize", event.target.value));
     $("#lineHeightRange").addEventListener("input", event => updateAppearance("lineHeight", event.target.value));
     ["ruleWidthRange", "ruleWidthNumber"].forEach(id => $("#" + id).addEventListener("input", event => updateAppearance("ruleWidth", event.target.value)));
-    $("#ruleWidthQuickRange").addEventListener("input", event => updateAppearance("ruleWidth", event.target.value));
     [["experienceMarker", "experience"], ["projectMarker", "projects"], ["skillsMarker", "skills"]].forEach(([id, key]) => $("#" + id).addEventListener("change", event => {
       state.appearance.markers[key] = event.target.value; render(); scheduleSave();
     }));
-    $("#markerTargetSelect").addEventListener("change", event => { $("#markerQuickSelect").value = state.appearance.markers[event.target.value]; });
-    $("#markerQuickSelect").addEventListener("change", event => { state.appearance.markers[$("#markerTargetSelect").value] = event.target.value; render(); scheduleSave(); });
     $("#resetStyleBtn").addEventListener("click", () => {
       state.appearance = clone(window.INITIAL_RESUME.appearance); render(); scheduleSave();
     });
-    $("#resetBtn").addEventListener("click", () => showModal("恢复初始内容？", "这会清除当前浏览器中的文字修改和照片调整。", () => { state = clone(window.INITIAL_RESUME); localStorage.removeItem(STORAGE_KEY); render(); persist(); }));
+    $("#resetBtn").addEventListener("click", () => {
+      const current = activeVersion();
+      const source = current.isMaster ? window.INITIAL_RESUME : workspace.versions.find(item => item.isMaster)?.data || window.INITIAL_RESUME;
+      showModal("恢复当前版本？", current.isMaster ? "母版内容将恢复为首次打开时的状态。其他岗位版本不会受影响。" : "当前岗位版本将重新复制母版内容，已填写的公司、岗位和 JD 会保留。", () => { setActiveState(clone(source)); render(); persist(); });
+    });
     $("#photoResetBtn").addEventListener("click", () => { state.photo.scale = 1; state.photo.x = 0; state.photo.y = 0; applyPhotoTransform(); persist(); });
     $("#photoScale").addEventListener("input", event => { state.photo.scale = Number(event.target.value) / 100; applyPhotoTransform(); scheduleSave(); });
-    $("#photoQuickRange").addEventListener("input", event => { state.photo.scale = Number(event.target.value) / 100; applyPhotoTransform(); scheduleSave(); });
     $("#photoInput").addEventListener("change", event => handlePhoto(event.target.files[0]));
     $("#markdownInput").addEventListener("change", event => event.target.files[0] && readFile(event.target.files[0], importMarkdown));
     $("#sourceResumeInput").addEventListener("change", event => convertSourceDocument(event.target.files[0]));

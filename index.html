@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
+    <meta name="description" content="本地运行的 A4 单页简历编辑器，支持母版、多岗位版本、JD 管理以及 Word/PDF 导出。" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 fill=%22%23181714%22/><text x=%2232%22 y=%2243%22 text-anchor=%22middle%22 font-size=%2238%22 fill=%22%23fff%22>履</text></svg>" />
     <title>A4 简历排版器 · 费婉燕</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -11,76 +13,60 @@
     <header class="topbar">
       <a class="brand" href="#editor" aria-label="A4 简历排版器">
         <span class="brand-mark">履</span>
-        <span><strong>A4 简历排版器</strong><small>本地编辑 · 单页打印</small></span>
+        <span><strong>A4 简历排版器</strong><small>母版管理 · 岗位定制</small></span>
       </a>
+      <div class="current-context" aria-live="polite"><span>当前版本</span><strong id="currentVersionTitle">母版简历</strong></div>
       <div class="top-actions">
         <span id="saveState" class="save-state"><i></i> 已保存到本机</span>
-        <button id="saveLocalBtn" class="button ghost" type="button">保存本地副本</button>
-        <button id="resetBtn" class="button ghost" type="button">恢复初始内容</button>
         <button id="exportWordBtn" class="button ghost export-button" type="button">导出 Word</button>
         <button id="exportPdfBtn" class="button primary export-button" type="button">导出 PDF</button>
       </div>
     </header>
 
-    <nav class="formatbar" aria-label="快捷格式工具栏">
-      <button id="addSectionBtn" class="tool text-tool" type="button">＋ 新增板块</button>
-      <span class="tool-divider"></span>
-      <label class="quick-control"><span>字体</span><select id="fontQuickSelect">
-        <option value="kaiti">楷体</option><option value="songti">宋体</option><option value="fangsong">仿宋</option><option value="heiti">黑体</option><option value="pingfang">苹方</option>
-      </select></label>
-      <label class="quick-control range-control"><span>行高 <output id="lineHeightValue">1.33</output></span><input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" /></label>
-      <label class="quick-control range-control"><span>字号 <output id="fontSizeQuickValue">10.1pt</output></span><input id="fontSizeQuickRange" type="range" min="8" max="14" step="0.1" value="10.1" /></label>
-      <label class="quick-control range-control"><span>横线 <output id="ruleWidthQuickValue">2.2pt</output></span><input id="ruleWidthQuickRange" type="range" min="0.5" max="6" step="0.1" value="2.2" /></label>
-      <label class="quick-control range-control"><span>照片 <output id="photoQuickValue">100%</output></span><input id="photoQuickRange" type="range" min="100" max="240" value="100" /></label>
-      <span class="tool-divider"></span>
-      <span class="selection-label">选区</span>
-      <button class="tool icon-tool" type="button" data-command="bold" title="加粗所选文字"><strong>B</strong></button>
-      <button class="tool icon-tool" type="button" data-command="italic" title="倾斜所选文字"><em>I</em></button>
-      <button class="tool icon-tool" type="button" data-command="arrow" title="在光标处插入箭头">➤</button>
-      <button class="tool icon-tool" type="button" data-command="smaller" title="缩小所选文字">A−</button>
-      <button class="tool icon-tool" type="button" data-command="larger" title="放大所选文字">A＋</button>
-      <button class="tool icon-tool" type="button" data-command="undo" title="撤销">↶</button>
-      <select id="markerTargetSelect" class="marker-target" title="选择要调整符号的模块"><option value="experience">实习</option><option value="projects">项目</option><option value="skills">技能</option></select>
-      <select id="markerQuickSelect" class="marker-quick" title="设置所选模块的条目标记"></select>
-    </nav>
-
     <main id="editor" class="workspace">
-      <aside class="panel left-panel" aria-label="内容工具">
+      <aside class="panel left-panel" aria-label="简历版本与岗位信息">
         <section class="panel-section intro">
-          <span class="eyebrow">CONTENT</span>
-          <h1>内容工具</h1>
-          <p>直接点击纸面文字编辑。所有内容与照片只保存在当前浏览器。</p>
+          <span class="eyebrow">RESUME LIBRARY</span>
+          <h1>简历版本</h1>
+          <p>母版保存完整经历；针对每个公司和岗位建立独立版本。</p>
+          <button id="createVersionBtn" class="button primary full version-create" type="button">＋ 新建岗位版本</button>
         </section>
 
-        <section class="panel-section">
-          <h2>Markdown</h2>
-          <label class="dropzone" id="markdownDropzone" for="markdownInput">
-            <span class="drop-icon">MD</span>
-            <strong>导入约定格式</strong>
-            <small>点击选择或拖入 .md 文件</small>
-          </label>
-          <input id="markdownInput" type="file" accept=".md,text/markdown,text/plain" hidden />
-          <div class="split-actions">
-            <button id="downloadMdBtn" class="button secondary" type="button">导出当前内容</button>
-            <a class="button text-button" href="示例简历.md" download>下载示例</a>
+        <section class="panel-section version-browser">
+          <div id="versionList" class="version-list"></div>
+        </section>
+
+        <section class="panel-section version-details">
+          <div class="section-title-row"><h2>当前版本信息</h2><span id="versionKind" class="version-kind">母版</span></div>
+          <label class="control-label" for="versionNameInput">版本名称</label>
+          <input id="versionNameInput" class="text-control" maxlength="40" />
+          <div class="field-pair">
+            <label><span>公司</span><input id="companyInput" class="text-control" maxlength="40" placeholder="例如：字节跳动" /></label>
+            <label><span>岗位</span><input id="roleInput" class="text-control" maxlength="40" placeholder="例如：AI 产品经理" /></label>
           </div>
-          <p class="hint">导入只替换字段和条目，不改变字号、间距与网格。</p>
-        </section>
-
-        <section class="panel-section">
-          <h2>本地保存</h2>
-          <p class="hint">每次编辑都会自动保存在当前浏览器。也可下载含照片与样式的完整副本。</p>
-          <button id="downloadBackupBtn" class="button secondary full compact" type="button">下载 .resume 备份</button>
-          <label class="button text-upload full" for="backupInput">从本地副本恢复</label>
-          <input id="backupInput" type="file" accept=".resume,.json,application/json" hidden />
-        </section>
-
-        <section class="panel-section">
-          <div class="section-title-row">
-            <h2>编辑网格</h2>
-            <label class="switch"><input id="gridToggle" type="checkbox" checked /><span></span></label>
+          <label class="control-label jd-label" for="jdInput">职位描述 JD</label>
+          <textarea id="jdInput" class="jd-input" rows="9" placeholder="把岗位 JD 粘贴到这里。它会和当前简历版本一起保存在本机，不会上传。"></textarea>
+          <div class="jd-meta"><span id="jdCount">0 字</span><span>自动保存</span></div>
+          <div class="version-actions">
+            <button id="duplicateVersionBtn" class="button secondary" type="button">复制版本</button>
+            <button id="deleteVersionBtn" class="button text-danger" type="button">删除版本</button>
           </div>
-          <p class="hint">模拟 Word 表格网格线，仅编辑时显示，打印自动隐藏。</p>
+        </section>
+
+        <section class="panel-section utility-stack">
+          <details>
+            <summary>Markdown 导入与导出</summary>
+            <label class="dropzone compact-dropzone" id="markdownDropzone" for="markdownInput"><span class="drop-icon">MD</span><strong>导入到当前版本</strong><small>只替换内容，不改变排版</small></label>
+            <input id="markdownInput" type="file" accept=".md,text/markdown,text/plain" hidden />
+            <div class="split-actions"><button id="downloadMdBtn" class="button secondary" type="button">导出 Markdown</button><a class="button text-button" href="示例简历.md" download>查看示例</a></div>
+          </details>
+          <details>
+            <summary>本地备份与恢复</summary>
+            <p class="hint">备份包含母版、所有岗位版本、JD、照片和样式。</p>
+            <button id="downloadBackupBtn" class="button secondary full compact" type="button">下载完整备份</button>
+            <label class="button text-upload full" for="backupInput">从备份恢复</label>
+            <input id="backupInput" type="file" accept=".resume,.json,application/json" hidden />
+          </details>
         </section>
 
         <section class="panel-section privacy">
@@ -98,11 +84,22 @@
         <div id="overflowToast" class="overflow-toast" role="status" aria-live="polite"></div>
       </section>
 
-      <aside class="panel right-panel" aria-label="样式、照片与页面状态">
+      <aside class="panel right-panel" aria-label="编辑与排版设置">
         <section class="panel-section intro">
-          <span class="eyebrow">TYPOGRAPHY</span>
-          <h1>排版样式</h1>
-          <p>参考模板中文为<strong>楷体 KaiTi</strong>，英文与数字为 Times New Roman。</p>
+          <span class="eyebrow">FORMAT</span>
+          <h1>编辑与排版</h1>
+          <p>先在纸面选中文字，再使用下方工具。全局排版仅保留一套控件。</p>
+        </section>
+        <section class="panel-section selection-tools">
+          <div class="section-title-row"><h2>所选文字</h2><button id="addSectionBtn" class="text-action" type="button">＋ 新增板块</button></div>
+          <div class="tool-row">
+            <button class="tool icon-tool" type="button" data-command="bold" title="加粗所选文字"><strong>B</strong></button>
+            <button class="tool icon-tool" type="button" data-command="italic" title="倾斜所选文字"><em>I</em></button>
+            <button class="tool icon-tool" type="button" data-command="arrow" title="插入箭头">➤</button>
+            <button class="tool icon-tool" type="button" data-command="smaller" title="缩小所选文字">A−</button>
+            <button class="tool icon-tool" type="button" data-command="larger" title="放大所选文字">A＋</button>
+            <button class="tool icon-tool" type="button" data-command="undo" title="撤销">↶</button>
+          </div>
         </section>
         <section class="panel-section style-tools">
           <label class="control-label" for="fontSelect">字体</label>
@@ -116,6 +113,9 @@
 
           <label class="slider-label" for="fontSizeRange"><span>正文字号</span><span class="unit-input"><input id="fontSizeNumber" type="number" min="8" max="14" step="0.1" value="10.1" /><em>pt</em></span></label>
           <input id="fontSizeRange" type="range" min="8" max="14" step="0.1" value="10.1" />
+
+          <label class="slider-label" for="lineHeightRange"><span>行距</span><output id="lineHeightValue">1.33</output></label>
+          <input id="lineHeightRange" type="range" min="1.05" max="1.8" step="0.01" value="1.33" />
 
           <label class="slider-label" for="ruleWidthRange"><span>横线粗细</span><span class="unit-input"><input id="ruleWidthNumber" type="number" min="0.5" max="6" step="0.1" value="2.2" /><em>pt</em></span></label>
           <input id="ruleWidthRange" type="range" min="0.5" max="6" step="0.1" value="2.2" />
@@ -131,12 +131,8 @@
           <button id="resetStyleBtn" class="button secondary full compact" type="button">恢复模板样式</button>
         </section>
 
-        <section class="panel-section subsection-intro">
-          <span class="eyebrow">PORTRAIT</span>
-          <h2>证件照</h2>
-          <p>替换后可直接在照片框内拖动位置。</p>
-        </section>
         <section class="panel-section photo-tools">
+          <div class="section-title-row"><h2>证件照</h2><span class="hint-inline">框内可拖动</span></div>
           <label class="button upload" for="photoInput">上传照片</label>
           <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
           <label class="slider-label" for="photoScale"><span>缩放</span><output id="scaleValue">100%</output></label>
@@ -146,7 +142,7 @@
         </section>
 
         <section class="panel-section page-status">
-          <span class="eyebrow">PAGE CHECK</span>
+          <div class="section-title-row"><h2>页面检查</h2><label class="switch" title="显示编辑网格"><input id="gridToggle" type="checkbox" checked /><span></span></label></div>
           <div id="pageBadge" class="page-badge ok"><i></i><strong>单页范围内</strong></div>
           <p id="pageDetail">内容未超出 A4 打印边界。</p>
           <dl>
@@ -156,14 +152,8 @@
           </dl>
         </section>
 
-        <section class="panel-section print-note">
-          <strong>导出说明</strong>
-          <p>PDF 会按当前纸面直接下载；Word 为可继续编辑的 DOCX 文件。两种格式均在浏览器本地生成。</p>
-        </section>
-
-        <section class="panel-section converter">
-          <span class="eyebrow">DOCUMENT CONVERT</span>
-          <h2>简历版本转换</h2>
+        <details class="panel-section converter">
+          <summary>旧简历 PDF / DOCX 转换</summary>
           <label class="button secondary full compact" for="sourceResumeInput">选择 PDF / DOCX</label>
           <input id="sourceResumeInput" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
           <p id="sourceResumeName" class="converter-file">尚未选择文件</p>
@@ -178,6 +168,9 @@
             <button id="convertJsonBtn" class="button secondary" type="button" disabled>转 JSON</button>
           </div>
           <p class="hint">文档仅在当前浏览器读取；转换结果会下载到本地，不上传服务器。</p>
+        </details>
+        <section class="panel-section reset-zone">
+          <button id="resetBtn" class="button text-danger full" type="button">恢复当前版本初始内容</button>
         </section>
       </aside>
     </main>
