@@ -424,6 +424,7 @@
     const target = selectedListPath && $(`[data-list-path="${CSS.escape(selectedListPath)}"]`);
     control.disabled = !target;
     deleteButton.disabled = !target;
+    deleteButton.dataset.targetPath = target ? selectedListPath : "";
     if (!target) {
       control.value = "inherit";
       hint.textContent = "先点击简历里带序号的段落";
@@ -472,6 +473,10 @@
   }
 
   function bindPaperActions() {
+    $$("[data-list-path]").forEach(row => row.addEventListener("pointerdown", event => {
+      if (event.target.closest("[data-delete-row]")) return;
+      selectListParagraph(row.dataset.listPath);
+    }));
     $$("[data-add-row]").forEach(button => button.addEventListener("click", () => addRow(button.dataset.addRow)));
     $$("[data-delete-row]").forEach(button => button.addEventListener("click", event => {
       event.preventDefault();
@@ -505,10 +510,13 @@
   function deleteListRow(path) {
     const parts = String(path || "").split(".");
     const index = Number(parts.pop());
-    if (!Number.isInteger(index)) return;
+    if (!Number.isInteger(index)) return false;
     const parentPath = parts.join(".");
     const list = parts.reduce((value, key) => value?.[key], state);
-    if (!Array.isArray(list) || index < 0 || index >= list.length) return;
+    if (!Array.isArray(list) || index < 0 || index >= list.length) {
+      showModal("无法定位这一行", "请重新点击需要删除的段落，再选择“删除当前整行”。", null, false);
+      return false;
+    }
     const preview = String(list[index] || "").trim();
     const remove = () => {
       list.splice(index, 1);
@@ -517,9 +525,11 @@
       selectedListPath = null;
       render();
       scheduleSave("删除整行");
+      $("#saveState").textContent = "已删除整行 · 正在保存…";
     };
     if (!preview) remove();
     else showModal("删除这一整行？", `${preview.slice(0, 42)}${preview.length > 42 ? "…" : ""}。删除后，下方内容会自动上移并重新编号。`, remove);
+    return true;
   }
 
   function addRow(key) {
@@ -1075,8 +1085,11 @@
       render();
       scheduleSave("修改当前段落序号");
     });
-    $("#deleteSelectedRowBtn").addEventListener("click", () => {
-      if (selectedListPath) deleteListRow(selectedListPath);
+    $("#deleteSelectedRowBtn").addEventListener("pointerdown", event => event.preventDefault());
+    $("#deleteSelectedRowBtn").addEventListener("click", event => {
+      const path = event.currentTarget.dataset.targetPath || selectedListPath;
+      if (path) deleteListRow(path);
+      else showModal("请先选择一行", "点击简历中需要删除的段落，看到该行高亮后再点击删除。", null, false);
     });
     $("#resetStyleBtn").addEventListener("click", () => {
       state.appearance = clone(window.INITIAL_RESUME.appearance); selectedListPath = null; render(); scheduleSave("恢复模板样式");
