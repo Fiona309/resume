@@ -30,6 +30,7 @@
   let drag = null;
   let photoDragMode = "frame";
   let selectedListPath = null;
+  let selectedSectionKey = null;
   let convertedDocument = null;
 
   function normalizeResume(candidate) {
@@ -39,7 +40,8 @@
       appearance: {
         ...clone(window.INITIAL_RESUME.appearance), ...(source.appearance || {}),
         markers: { ...window.INITIAL_RESUME.appearance.markers, ...(source.appearance?.markers || {}) },
-        itemMarkers: { ...(source.appearance?.itemMarkers || {}) }
+        itemMarkers: { ...(source.appearance?.itemMarkers || {}) },
+        sectionSpacing: { ...(source.appearance?.sectionSpacing || {}) }
       },
       customSections: source.customSections || [], rich: source.rich || {}
     };
@@ -136,6 +138,11 @@
     return state.appearance?.itemMarkers?.[path] || fallback;
   }
 
+  function sectionSpacingFor(key) {
+    const custom = Number(state.appearance?.sectionSpacing?.[key]);
+    return Number.isFinite(custom) ? custom : 1.05;
+  }
+
   function listItem(text, path, index, markerStyle) {
     const content = state.rich?.[path] || richLead(text);
     const resolved = markerStyleFor(path, markerStyle);
@@ -200,6 +207,7 @@
       current.role = snapshot.role ?? current.role;
       current.jd = snapshot.jd ?? current.jd;
       selectedListPath = null;
+      selectedSectionKey = null;
       render();
       persist({ recordHistory: true, label: `已恢复 · ${formatHistoryTime(snapshot.savedAt)}` });
       setHistoryOpen(false);
@@ -217,6 +225,8 @@
     activeVersion().data = state;
     workspace.activeId = id;
     state = activeVersion().data;
+    selectedListPath = null;
+    selectedSectionKey = null;
     render();
     persist();
     $(".stage").scrollTop = 0;
@@ -229,6 +239,7 @@
     workspace.versions.push(version);
     workspace.activeId = version.id;
     state = version.data;
+    selectedSectionKey = null;
     recordHistory("创建版本");
     render();
     persist();
@@ -241,6 +252,7 @@
     workspace.versions.push(version);
     workspace.activeId = version.id;
     state = version.data;
+    selectedSectionKey = null;
     recordHistory("复制版本");
     render();
     persist();
@@ -296,18 +308,22 @@
     bindEditableEvents();
     bindPortraitDrag();
     bindPaperActions();
+    bindSectionSpacingTargets();
     syncMarkerTargetUI();
+    syncSectionSpacingUI();
     requestAnimationFrame(checkOverflow);
   }
 
   function section(title, content, module) {
     const addKey = ({ "教育经历":"education", "实习经历":"experience", "项目经历":"projects", "技能与优势":"skills" })[module];
-    return `<section class="resume-section" data-module="${module}">${addKey ? `<button class="paper-add" type="button" data-add-row="${addKey}" title="在此模块新增一项">＋</button>` : ""}<div class="section-heading edit-cell">${title}</div>${content}</section>`;
+    const key = addKey || module;
+    return `<section class="resume-section" data-module="${module}" data-section-key="${key}" style="margin-top:${sectionSpacingFor(key)}mm">${addKey ? `<button class="paper-add" type="button" data-add-row="${addKey}" title="在此模块新增一项">＋</button>` : ""}<div class="section-heading edit-cell" title="点击后可单独调整此模块上方间距">${title}</div>${content}</section>`;
   }
 
   function customSectionHtml(item, index) {
     const path = `customSections.${index}.title`;
-    return `<section class="resume-section custom-section" data-module="${escapeHtml(item.title)}">
+    const sectionKey = `custom-${index}`;
+    return `<section class="resume-section custom-section" data-module="${escapeHtml(item.title)}" data-section-key="${sectionKey}" style="margin-top:${sectionSpacingFor(sectionKey)}mm">
       <button class="paper-add" type="button" data-add-row="custom:${index}" title="新增一项">＋</button>
       <button class="paper-remove" type="button" data-remove-section="${index}" title="删除此板块">×</button>
       <div class="section-heading edit-cell" contenteditable="true" spellcheck="false" data-path="${path}">${state.rich?.[path] || escapeHtml(item.title)}</div>
@@ -347,7 +363,8 @@
     const appearance = {
       ...clone(window.INITIAL_RESUME.appearance), ...(state.appearance || {}),
       markers: { ...window.INITIAL_RESUME.appearance.markers, ...(state.appearance?.markers || {}) },
-      itemMarkers: { ...(state.appearance?.itemMarkers || {}) }
+      itemMarkers: { ...(state.appearance?.itemMarkers || {}) },
+      sectionSpacing: { ...(state.appearance?.sectionSpacing || {}) }
     };
     state.appearance = appearance;
     const root = $("#resumeRoot");
@@ -433,6 +450,48 @@
     const text = target.querySelector(".list-content")?.innerText.trim() || "当前段落";
     hint.textContent = `正在修改：${text.slice(0, 18)}${text.length > 18 ? "…" : ""}`;
     control.value = state.appearance.itemMarkers?.[selectedListPath] || "inherit";
+  }
+
+  function bindSectionSpacingTargets() {
+    $$("[data-section-key] > .section-heading").forEach(heading => heading.addEventListener("pointerdown", () => {
+      const section = heading.closest("[data-section-key]");
+      selectedSectionKey = section.dataset.sectionKey;
+      syncSectionSpacingUI();
+    }));
+  }
+
+  function syncSectionSpacingUI() {
+    const range = $("#sectionSpacingRange");
+    const number = $("#sectionSpacingNumber");
+    const reset = $("#resetSectionSpacingBtn");
+    const hint = $("#sectionSpacingHint");
+    if (!range || !number || !reset || !hint) return;
+    const target = selectedSectionKey && $(`[data-section-key="${CSS.escape(selectedSectionKey)}"]`);
+    $$('[data-section-key]').forEach(section => section.classList.toggle("spacing-target", section === target));
+    const enabled = Boolean(target);
+    range.disabled = number.disabled = reset.disabled = !enabled;
+    if (!enabled) {
+      range.value = number.value = "1.1";
+      hint.textContent = "点击纸面上的模块标题";
+      return;
+    }
+    const value = sectionSpacingFor(selectedSectionKey);
+    range.value = number.value = value.toFixed(1);
+    hint.textContent = `正在调整：${target.dataset.module} 与上一模块的距离`;
+  }
+
+  function updateSelectedSectionSpacing(rawValue) {
+    if (!selectedSectionKey) return;
+    const value = Math.min(8, Math.max(0, Number(rawValue)));
+    if (!Number.isFinite(value)) return;
+    state.appearance.sectionSpacing ||= {};
+    state.appearance.sectionSpacing[selectedSectionKey] = value;
+    const target = $(`[data-section-key="${CSS.escape(selectedSectionKey)}"]`);
+    if (target) target.style.marginTop = `${value}mm`;
+    $("#sectionSpacingRange").value = value;
+    $("#sectionSpacingNumber").value = value.toFixed(1);
+    scheduleSave(`调整模块间距 · ${target?.dataset.module || "当前模块"}`);
+    requestAnimationFrame(checkOverflow);
   }
 
   function cleanRich(html) {
@@ -927,13 +986,13 @@
     ];
     const photo = await croppedPhotoData();
     const children = [table([[plain("")], headerCenter, [new Paragraph({ children: [new ImageRun({ data: photo, transformation: { width: 71, height: 100 }, type: "png" })], alignment: AlignmentType.RIGHT })]], [1920, 6410, 1920])];
-    const heading = title => new Paragraph({
+    const heading = (title, key) => new Paragraph({
       children: wordRuns("", title, { size: Math.round(baseSize * 1.17), bold: true, characterSpacing: 45 }),
       border: { bottom: { style: BorderStyle.SINGLE, size: Math.max(4, Math.round(Number(state.appearance.ruleWidth) * 8)), color: "000000", space: 0 } },
-      spacing: { before: 70, after: 35 }, keepNext: true
+      spacing: { before: Math.round(sectionSpacingFor(key) * 56.7), after: 35 }, keepNext: true
     });
-    const addHeading = title => children.push(heading(title));
-    addHeading("教育经历");
+    const addHeading = (title, key) => children.push(heading(title, key));
+    addHeading("教育经历", "education");
     state.education.forEach((item, i) => {
       children.push(table([
         [paragraph(`education.${i}.school`, item.school, { keepNext: true })],
@@ -943,7 +1002,7 @@
       if (item.note) children.push(paragraph(`education.${i}.note`, item.note));
     });
     const addEntries = (title, items, key, project = false) => {
-      addHeading(title);
+      addHeading(title, key);
       items.forEach((item, i) => {
         children.push(table([
           [paragraph(`${key}.${i}.company`, item.company, { keepNext: true })],
@@ -965,14 +1024,14 @@
     addEntries("实习经历", state.experience, "experience");
     addEntries("项目经历", state.projects, "projects", true);
     (state.customSections || []).forEach((section, i) => {
-      addHeading(section.title);
+      addHeading(section.title, `custom-${i}`);
       section.items.forEach((item, j) => {
         const path = `customSections.${i}.items.${j}`;
         const marker = markerText(j, markerStyleFor(path, "arrow"));
         children.push(new Paragraph({ children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(path, item, { autoLead: true })], indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) } }));
       });
     });
-    addHeading("技能与优势");
+    addHeading("技能与优势", "skills");
     state.skills.forEach((item, i) => {
       const path = `skills.${i}`;
       const marker = markerText(i, markerStyleFor(path, state.appearance.markers.skills));
@@ -1090,6 +1149,17 @@
       const path = event.currentTarget.dataset.targetPath || selectedListPath;
       if (path) deleteListRow(path);
       else showModal("请先选择一行", "点击简历中需要删除的段落，看到该行高亮后再点击删除。", null, false);
+    });
+    ["sectionSpacingRange", "sectionSpacingNumber"].forEach(id => $("#" + id).addEventListener("input", event => updateSelectedSectionSpacing(event.target.value)));
+    $("#resetSectionSpacingBtn").addEventListener("click", () => {
+      if (!selectedSectionKey) return;
+      state.appearance.sectionSpacing ||= {};
+      delete state.appearance.sectionSpacing[selectedSectionKey];
+      const target = $(`[data-section-key="${CSS.escape(selectedSectionKey)}"]`);
+      if (target) target.style.marginTop = `${sectionSpacingFor(selectedSectionKey)}mm`;
+      syncSectionSpacingUI();
+      scheduleSave(`恢复模块间距 · ${target?.dataset.module || "当前模块"}`);
+      requestAnimationFrame(checkOverflow);
     });
     $("#resetStyleBtn").addEventListener("click", () => {
       state.appearance = clone(window.INITIAL_RESUME.appearance); selectedListPath = null; render(); scheduleSave("恢复模板样式");

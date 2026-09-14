@@ -124,6 +124,13 @@
             <button class="tool icon-tool" type="button" data-command="undo" title="撤销">↶</button>
           </div>
         </section>
+        <section class="panel-section section-spacing-tools">
+          <h2>当前模块间距</h2>
+          <p id="sectionSpacingHint" class="selection-hint">点击纸面上的模块标题</p>
+          <label class="slider-label" for="sectionSpacingRange"><span>上方间距</span><span class="unit-input"><input id="sectionSpacingNumber" type="number" min="0" max="8" step="0.1" value="1.1" disabled /><em>mm</em></span></label>
+          <input id="sectionSpacingRange" type="range" min="0" max="8" step="0.1" value="1.1" disabled />
+          <button id="resetSectionSpacingBtn" class="button secondary full compact" type="button" disabled>恢复当前模块默认间距</button>
+        </section>
         <section class="panel-section style-tools">
           <h2>当前段落序号</h2>
           <p id="markerTargetHint" class="selection-hint">先点击简历里带序号的段落</p>
