@@ -18,6 +18,13 @@
       <div class="current-context" aria-live="polite"><span>当前版本</span><strong id="currentVersionTitle">母版简历</strong></div>
       <div class="top-actions">
         <span id="saveState" class="save-state"><i></i> 已保存到本机</span>
+        <div class="history-control">
+          <button id="historyBtn" class="button ghost history-button" type="button" aria-expanded="false" aria-controls="historyPopover">历史版本 <span id="historyCount">0</span></button>
+          <div id="historyPopover" class="history-popover" hidden>
+            <div class="history-head"><div><strong>历史版本</strong><small>当前简历的本地快照</small></div><button id="closeHistoryBtn" class="history-close" type="button" aria-label="关闭历史版本">×</button></div>
+            <div id="historyList" class="history-list"></div>
+          </div>
+        </div>
         <button id="exportWordBtn" class="button ghost export-button" type="button">导出 Word</button>
         <button id="exportPdfBtn" class="button primary export-button" type="button">导出 PDF</button>
       </div>
@@ -118,26 +125,36 @@
           </div>
         </section>
         <section class="panel-section style-tools">
-          <h2>符号样式</h2>
-          <div class="marker-controls">
-            <label for="experienceMarker">实习序号</label>
-            <select id="experienceMarker" class="select-control marker-select"></select>
-            <label for="projectMarker">项目符号</label>
-            <select id="projectMarker" class="select-control marker-select"></select>
-            <label for="skillsMarker">技能序号</label>
-            <select id="skillsMarker" class="select-control marker-select"></select>
-          </div>
+          <h2>当前段落序号</h2>
+          <p id="markerTargetHint" class="selection-hint">先点击简历里带序号的段落</p>
+          <select id="itemMarker" class="select-control marker-select" disabled aria-label="当前段落序号样式"></select>
+          <button id="deleteSelectedRowBtn" class="button row-delete-action full" type="button" disabled>删除当前整行</button>
+          <details class="marker-defaults">
+            <summary>设置模块默认样式</summary>
+            <div class="marker-controls">
+              <label for="experienceMarker">实习经历</label>
+              <select id="experienceMarker" class="select-control marker-select"></select>
+              <label for="projectMarker">项目经历</label>
+              <select id="projectMarker" class="select-control marker-select"></select>
+              <label for="skillsMarker">技能优势</label>
+              <select id="skillsMarker" class="select-control marker-select"></select>
+            </div>
+          </details>
           <button id="resetStyleBtn" class="button secondary full compact" type="button">恢复模板样式</button>
         </section>
 
         <section class="panel-section photo-tools">
-          <div class="section-title-row"><h2>证件照</h2><span class="hint-inline">框内可拖动</span></div>
+          <div class="section-title-row"><h2>证件照</h2><span class="hint-inline">直接拖动相框</span></div>
           <label class="button upload" for="photoInput">上传照片</label>
           <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+          <div class="photo-mode" role="group" aria-label="照片拖动模式">
+            <button type="button" class="active" data-photo-mode="frame">移动相框</button>
+            <button type="button" data-photo-mode="crop">调整构图</button>
+          </div>
           <label class="slider-label" for="photoScale"><span>缩放</span><output id="scaleValue">100%</output></label>
           <input id="photoScale" type="range" min="100" max="240" value="100" />
-          <button id="photoResetBtn" class="button secondary full" type="button">还原照片位置</button>
-          <p class="hint">支持 JPG、PNG、WebP。照片数据保留在浏览器本地。</p>
+          <button id="photoResetBtn" class="button secondary full" type="button">还原相框与构图</button>
+          <p class="hint">“移动相框”改变整张证件照的位置；“调整构图”只移动框内照片。数据仅保留在本机。</p>
         </section>
 
         <details class="panel-section converter">

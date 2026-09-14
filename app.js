@@ -2,6 +2,9 @@
   const LEGACY_STORAGE_KEY = "a4-resume-editor.feiwanyan.v3";
   const STORAGE_KEY = "a4-resume-editor.workspace.v1";
   const PHOTO_LIMIT = 3 * 1024 * 1024;
+  const HISTORY_LIMIT = 30;
+  const HISTORY_COALESCE_MS = 12000;
+  const DISPLAY_TIME_ZONE = "Asia/Shanghai";
   const FONT_STACKS = {
     kaiti: '"Kaiti SC", STKaiti, KaiTi, "Songti SC", serif',
     songti: '"Songti SC", STSong, SimSun, serif',
@@ -22,17 +25,28 @@
   let workspace = loadWorkspace();
   let state = activeVersion().data;
   let saveTimer = null;
+  let pendingHistoryLabel = "内容编辑";
   let modalAction = null;
   let drag = null;
+  let photoDragMode = "frame";
+  let selectedListPath = null;
   let convertedDocument = null;
 
   function normalizeResume(candidate) {
     const source = candidate || {};
     return {
       ...clone(window.INITIAL_RESUME), ...source,
-      appearance: { ...clone(window.INITIAL_RESUME.appearance), ...(source.appearance || {}), markers: { ...window.INITIAL_RESUME.appearance.markers, ...(source.appearance?.markers || {}) } },
+      appearance: {
+        ...clone(window.INITIAL_RESUME.appearance), ...(source.appearance || {}),
+        markers: { ...window.INITIAL_RESUME.appearance.markers, ...(source.appearance?.markers || {}) },
+        itemMarkers: { ...(source.appearance?.itemMarkers || {}) }
+      },
       customSections: source.customSections || [], rich: source.rich || {}
     };
+  }
+
+  function normalizeVersion(item) {
+    return { ...item, history: Array.isArray(item.history) ? item.history.slice(0, HISTORY_LIMIT) : [], data: normalizeResume(item.data) };
   }
 
   function loadWorkspace() {
@@ -40,14 +54,14 @@
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const versions = (parsed.versions || []).map(item => ({ ...item, data: normalizeResume(item.data) }));
+        const versions = (parsed.versions || []).map(normalizeVersion);
         if (versions.length) return { ...parsed, activeId: versions.some(item => item.id === parsed.activeId) ? parsed.activeId : versions[0].id, versions };
       }
       const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
       const data = legacy ? normalizeResume(JSON.parse(legacy)) : normalizeResume(window.INITIAL_RESUME);
-      return { activeId: "master", versions: [{ id: "master", name: "母版简历", company: "", role: "", jd: "", isMaster: true, createdAt: new Date().toISOString(), data }] };
+      return { activeId: "master", versions: [{ id: "master", name: "母版简历", company: "", role: "", jd: "", isMaster: true, createdAt: new Date().toISOString(), history: [], data }] };
     } catch {
-      return { activeId: "master", versions: [{ id: "master", name: "母版简历", company: "", role: "", jd: "", isMaster: true, createdAt: new Date().toISOString(), data: normalizeResume(window.INITIAL_RESUME) }] };
+      return { activeId: "master", versions: [{ id: "master", name: "母版简历", company: "", role: "", jd: "", isMaster: true, createdAt: new Date().toISOString(), history: [], data: normalizeResume(window.INITIAL_RESUME) }] };
     }
   }
 
@@ -60,21 +74,45 @@
     activeVersion().data = state;
   }
 
-  function persist() {
+  function historyPayload() {
+    const data = clone(state);
+    if (data.photo) data.photo.src = "";
+    const current = activeVersion();
+    return { data, name: current.name, company: current.company, role: current.role, jd: current.jd };
+  }
+
+  function recordHistory(label) {
+    const current = activeVersion();
+    current.history ||= [];
+    const payload = historyPayload();
+    const fingerprint = JSON.stringify(payload);
+    const latest = current.history[0];
+    if (latest?.fingerprint === fingerprint) return;
+    const now = new Date();
+    const entry = { id: `snapshot-${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`, savedAt: now.toISOString(), label, fingerprint, ...payload };
+    if (latest && latest.label === label && now - new Date(latest.savedAt) < HISTORY_COALESCE_MS) current.history[0] = entry;
+    else current.history.unshift(entry);
+    current.history = current.history.slice(0, HISTORY_LIMIT);
+  }
+
+  function persist(options = {}) {
     try {
       activeVersion().data = state;
       activeVersion().updatedAt = new Date().toISOString();
+      if (options.recordHistory) recordHistory(options.label || pendingHistoryLabel);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace));
       $("#saveState").innerHTML = "<i></i> 已保存到本机";
+      renderHistoryUI();
     } catch {
       $("#saveState").textContent = "本机存储空间不足";
     }
   }
 
-  function scheduleSave() {
+  function scheduleSave(label = "内容编辑") {
+    pendingHistoryLabel = label;
     $("#saveState").textContent = "正在保存…";
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persist, 320);
+    saveTimer = setTimeout(() => persist({ recordHistory: true, label: pendingHistoryLabel }), 420);
   }
 
   function editable(text, path, className = "") {
@@ -94,9 +132,14 @@
     return ({ decimal: `${index + 1}.`, circled: circled[index] || `${index + 1}.`, arrow: "➤", triangle: "➢", bullet: "•", check: "✓", none: "" })[style] ?? `${index + 1}.`;
   }
 
+  function markerStyleFor(path, fallback) {
+    return state.appearance?.itemMarkers?.[path] || fallback;
+  }
+
   function listItem(text, path, index, markerStyle) {
     const content = state.rich?.[path] || richLead(text);
-    return `<li><span class="list-marker" aria-hidden="true">${markerText(index, markerStyle)}</span><span class="edit-cell list-content" contenteditable="true" spellcheck="false" data-path="${path}">${content}</span></li>`;
+    const resolved = markerStyleFor(path, markerStyle);
+    return `<li data-list-path="${path}"><span class="list-marker" aria-hidden="true">${markerText(index, resolved)}</span><span class="edit-cell list-content" contenteditable="true" spellcheck="false" data-path="${path}">${content}</span><button class="row-delete" type="button" data-delete-row="${path}" title="删除整行" aria-label="删除这一整行">×</button></li>`;
   }
 
   function renderVersionUI() {
@@ -118,6 +161,55 @@
       </button>`;
     }).join("");
     $$('[data-version-id]').forEach(button => button.addEventListener("click", () => switchVersion(button.dataset.versionId)));
+    renderHistoryUI();
+  }
+
+  function formatHistoryTime(value) {
+    const date = new Date(value);
+    const today = new Date();
+    const dateLabel = date.toLocaleDateString("zh-CN", { timeZone: DISPLAY_TIME_ZONE, month: "numeric", day: "numeric" });
+    const todayLabel = today.toLocaleDateString("zh-CN", { timeZone: DISPLAY_TIME_ZONE, month: "numeric", day: "numeric" });
+    const timeLabel = date.toLocaleTimeString("zh-CN", { timeZone: DISPLAY_TIME_ZONE, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    return `${dateLabel === todayLabel ? "今天" : dateLabel} ${timeLabel}`;
+  }
+
+  function renderHistoryUI() {
+    const list = $("#historyList");
+    if (!list) return;
+    const history = activeVersion().history || [];
+    $("#historyCount").textContent = history.length;
+    list.innerHTML = history.length ? history.map((entry, index) => `<button class="history-item" type="button" data-history-id="${escapeHtml(entry.id)}">
+      <strong>${escapeHtml(entry.label || "自动保存")}</strong><time datetime="${escapeHtml(entry.savedAt)}">${formatHistoryTime(entry.savedAt)}</time>
+      <small>${index === 0 ? "最近保存" : `恢复后将替换当前版本内容 · 第 ${index + 1} 个快照`}</small>
+    </button>`).join("") : `<div class="history-empty">还没有历史快照。开始编辑后会自动按时间保存。</div>`;
+    $$('[data-history-id]', list).forEach(button => button.addEventListener("click", () => restoreHistory(button.dataset.historyId)));
+  }
+
+  function restoreHistory(id) {
+    const current = activeVersion();
+    const snapshot = (current.history || []).find(item => item.id === id);
+    if (!snapshot) return;
+    showModal("恢复这个历史版本？", `${formatHistoryTime(snapshot.savedAt)} · ${snapshot.label}。当前状态会先自动保留为一个快照。`, () => {
+      recordHistory("恢复前状态");
+      const photoSrc = state.photo?.src || window.INITIAL_RESUME.photo.src;
+      state = normalizeResume(snapshot.data);
+      state.photo.src = photoSrc;
+      current.data = state;
+      current.name = snapshot.name ?? current.name;
+      current.company = snapshot.company ?? current.company;
+      current.role = snapshot.role ?? current.role;
+      current.jd = snapshot.jd ?? current.jd;
+      selectedListPath = null;
+      render();
+      persist({ recordHistory: true, label: `已恢复 · ${formatHistoryTime(snapshot.savedAt)}` });
+      setHistoryOpen(false);
+    });
+  }
+
+  function setHistoryOpen(open) {
+    $("#historyPopover").hidden = !open;
+    $("#historyBtn").setAttribute("aria-expanded", String(open));
+    if (open) renderHistoryUI();
   }
 
   function switchVersion(id) {
@@ -132,11 +224,12 @@
 
   function createVersion(source = workspace.versions.find(item => item.isMaster)?.data || state, label = "新岗位版本") {
     const number = workspace.versions.filter(item => !item.isMaster).length + 1;
-    const version = { id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `${label} ${number}`, company: "", role: "", jd: "", isMaster: false, createdAt: new Date().toISOString(), data: clone(source) };
+    const version = { id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `${label} ${number}`, company: "", role: "", jd: "", isMaster: false, createdAt: new Date().toISOString(), history: [], data: clone(source) };
     activeVersion().data = state;
     workspace.versions.push(version);
     workspace.activeId = version.id;
     state = version.data;
+    recordHistory("创建版本");
     render();
     persist();
     $("#versionNameInput").select();
@@ -144,10 +237,11 @@
 
   function duplicateVersion() {
     const current = activeVersion();
-    const version = { ...clone(current), id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `${current.name} 副本`, isMaster: false, createdAt: new Date().toISOString() };
+    const version = { ...clone(current), id: `version-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `${current.name} 副本`, isMaster: false, createdAt: new Date().toISOString(), history: [] };
     workspace.versions.push(version);
     workspace.activeId = version.id;
     state = version.data;
+    recordHistory("复制版本");
     render();
     persist();
   }
@@ -175,7 +269,7 @@
       const current = activeVersion();
       $(".version-item.active small").textContent = [current.company, current.role].filter(Boolean).join(" · ") || "待填写公司与岗位";
     }
-    scheduleSave();
+    scheduleSave(key === "jd" ? "编辑职位 JD" : "编辑版本信息");
   }
 
   function render() {
@@ -186,7 +280,7 @@
         ${editable(state.profile.name, "profile.name", "resume-name")}
         <div class="contact-line edit-cell" contenteditable="true" spellcheck="false" data-profile-line="contact">Tel:${escapeHtml(state.profile.phone)}｜邮箱：${escapeHtml(state.profile.email)}</div>
         ${editable(state.profile.homepage, "profile.homepage", "contact-line")}
-        <div class="portrait" id="portrait" title="拖动调整照片位置">
+        <div class="portrait" id="portrait" data-drag-mode="${photoDragMode}" title="${photoDragMode === "frame" ? "拖动整个照片框" : "拖动框内照片调整构图"}">
           <img id="portraitImage" src="${escapeHtml(state.photo.src)}" alt="证件照" />
           <span class="portrait-hint">拖动调整</span>
         </div>
@@ -202,6 +296,7 @@
     bindEditableEvents();
     bindPortraitDrag();
     bindPaperActions();
+    syncMarkerTargetUI();
     requestAnimationFrame(checkOverflow);
   }
 
@@ -249,7 +344,11 @@
   }
 
   function applyAppearance() {
-    const appearance = { ...clone(window.INITIAL_RESUME.appearance), ...(state.appearance || {}), markers: { ...window.INITIAL_RESUME.appearance.markers, ...(state.appearance?.markers || {}) } };
+    const appearance = {
+      ...clone(window.INITIAL_RESUME.appearance), ...(state.appearance || {}),
+      markers: { ...window.INITIAL_RESUME.appearance.markers, ...(state.appearance?.markers || {}) },
+      itemMarkers: { ...(state.appearance?.itemMarkers || {}) }
+    };
     state.appearance = appearance;
     const root = $("#resumeRoot");
     root.style.setProperty("--resume-font", FONT_STACKS[appearance.font] || FONT_STACKS.kaiti);
@@ -276,6 +375,12 @@
 
   function bindEditableEvents() {
     $$('[contenteditable="true"]').forEach(el => {
+      el.addEventListener("focus", () => {
+        if (el.classList.contains("list-content")) selectListParagraph(el.dataset.path);
+      });
+      el.addEventListener("click", () => {
+        if (el.classList.contains("list-content")) selectListParagraph(el.dataset.path);
+      });
       el.addEventListener("paste", event => {
         event.preventDefault();
         const text = event.clipboardData.getData("text/plain");
@@ -291,10 +396,42 @@
           state.rich ||= {};
           state.rich[el.dataset.path] = cleanRich(el.innerHTML);
         }
-        scheduleSave();
+        const module = el.closest("[data-module]")?.dataset.module || "简历内容";
+        scheduleSave(`编辑 · ${module}`);
         requestAnimationFrame(checkOverflow);
       });
     });
+  }
+
+  function moduleMarkerForPath(path) {
+    if (path?.startsWith("experience.")) return state.appearance.markers.experience;
+    if (path?.startsWith("projects.")) return state.appearance.markers.projects;
+    if (path?.startsWith("skills.")) return state.appearance.markers.skills;
+    return "arrow";
+  }
+
+  function selectListParagraph(path) {
+    selectedListPath = path;
+    syncMarkerTargetUI();
+  }
+
+  function syncMarkerTargetUI() {
+    $$('[data-list-path]').forEach(item => item.classList.toggle("marker-target", item.dataset.listPath === selectedListPath));
+    const control = $("#itemMarker");
+    const deleteButton = $("#deleteSelectedRowBtn");
+    const hint = $("#markerTargetHint");
+    if (!control || !deleteButton || !hint) return;
+    const target = selectedListPath && $(`[data-list-path="${CSS.escape(selectedListPath)}"]`);
+    control.disabled = !target;
+    deleteButton.disabled = !target;
+    if (!target) {
+      control.value = "inherit";
+      hint.textContent = "先点击简历里带序号的段落";
+      return;
+    }
+    const text = target.querySelector(".list-content")?.innerText.trim() || "当前段落";
+    hint.textContent = `正在修改：${text.slice(0, 18)}${text.length > 18 ? "…" : ""}`;
+    control.value = state.appearance.itemMarkers?.[selectedListPath] || "inherit";
   }
 
   function cleanRich(html) {
@@ -321,7 +458,14 @@
 
   function applyPhotoTransform() {
     const img = $("#portraitImage");
-    if (!img) return;
+    const portrait = $("#portrait");
+    if (!img || !portrait) return;
+    state.photo.frameX = Number(state.photo.frameX || 0);
+    state.photo.frameY = Number(state.photo.frameY || 0);
+    portrait.style.setProperty("--photo-frame-x", `${state.photo.frameX}px`);
+    portrait.style.setProperty("--photo-frame-y", `${state.photo.frameY}px`);
+    portrait.dataset.dragMode = photoDragMode;
+    portrait.title = photoDragMode === "frame" ? "拖动整个照片框" : "拖动框内照片调整构图";
     img.style.transform = `translate(calc(-50% + ${state.photo.x}px), calc(-50% + ${state.photo.y}px)) scale(${state.photo.scale})`;
     $("#photoScale").value = Math.round(state.photo.scale * 100);
     $("#scaleValue").textContent = `${Math.round(state.photo.scale * 100)}%`;
@@ -329,12 +473,53 @@
 
   function bindPaperActions() {
     $$("[data-add-row]").forEach(button => button.addEventListener("click", () => addRow(button.dataset.addRow)));
+    $$("[data-delete-row]").forEach(button => button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteListRow(button.dataset.deleteRow);
+    }));
     $$("[data-remove-section]").forEach(button => button.addEventListener("click", () => {
       const index = Number(button.dataset.removeSection);
       showModal("删除这个板块？", "板块标题和其中的全部内容都会从当前简历移除。", () => {
-        state.customSections.splice(index, 1); state.rich = {}; render(); scheduleSave();
+        state.customSections.splice(index, 1); state.rich = {}; render(); scheduleSave("删除自定义板块");
       });
     }));
+  }
+
+  function remapIndexedRecord(record, parentPath, deletedIndex) {
+    const result = {};
+    const prefix = `${parentPath}.`;
+    Object.entries(record || {}).forEach(([key, value]) => {
+      if (!key.startsWith(prefix)) { result[key] = value; return; }
+      const remainder = key.slice(prefix.length);
+      const match = remainder.match(/^(\d+)(.*)$/);
+      if (!match) { result[key] = value; return; }
+      const index = Number(match[1]);
+      if (index === deletedIndex) return;
+      const nextIndex = index > deletedIndex ? index - 1 : index;
+      result[`${prefix}${nextIndex}${match[2]}`] = value;
+    });
+    return result;
+  }
+
+  function deleteListRow(path) {
+    const parts = String(path || "").split(".");
+    const index = Number(parts.pop());
+    if (!Number.isInteger(index)) return;
+    const parentPath = parts.join(".");
+    const list = parts.reduce((value, key) => value?.[key], state);
+    if (!Array.isArray(list) || index < 0 || index >= list.length) return;
+    const preview = String(list[index] || "").trim();
+    const remove = () => {
+      list.splice(index, 1);
+      state.rich = remapIndexedRecord(state.rich, parentPath, index);
+      state.appearance.itemMarkers = remapIndexedRecord(state.appearance.itemMarkers, parentPath, index);
+      selectedListPath = null;
+      render();
+      scheduleSave("删除整行");
+    };
+    if (!preview) remove();
+    else showModal("删除这一整行？", `${preview.slice(0, 42)}${preview.length > 42 ? "…" : ""}。删除后，下方内容会自动上移并重新编号。`, remove);
   }
 
   function addRow(key) {
@@ -342,13 +527,13 @@
     else if (key === "experience" || key === "projects") state[key].push({ company: "机构 / 项目名称", team: "部门", role: "职位", date: "起止时间", summary: "", bullets: ["请填写职责或成果"] });
     else if (key === "skills") state.skills.push("请填写技能或优势");
     else if (key.startsWith("custom:")) state.customSections[Number(key.split(":")[1])].items.push("请填写内容");
-    render(); scheduleSave();
+    render(); scheduleSave("新增简历内容");
   }
 
   function addSection() {
     state.customSections ||= [];
     state.customSections.push({ title: "新增板块", items: ["请填写内容"] });
-    render(); scheduleSave();
+    render(); scheduleSave("新增自定义板块");
     const sections = $$(".custom-section");
     sections.at(-1)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -390,17 +575,38 @@
   function bindPortraitDrag() {
     const portrait = $("#portrait");
     portrait.addEventListener("pointerdown", event => {
-      drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: state.photo.x, originY: state.photo.y };
+      const frame = photoDragMode === "frame";
+      const portraitRect = portrait.getBoundingClientRect();
+      const paperRect = $("#paper").getBoundingClientRect();
+      const originX = frame ? Number(state.photo.frameX || 0) : Number(state.photo.x || 0);
+      const originY = frame ? Number(state.photo.frameY || 0) : Number(state.photo.y || 0);
+      drag = {
+        pointerId: event.pointerId, mode: photoDragMode, startX: event.clientX, startY: event.clientY,
+        originX, originY,
+        minX: originX + paperRect.left - portraitRect.left,
+        maxX: originX + paperRect.right - portraitRect.right,
+        minY: originY + paperRect.top - portraitRect.top,
+        maxY: originY + paperRect.bottom - portraitRect.bottom
+      };
+      portrait.classList.add("is-dragging");
       portrait.setPointerCapture(event.pointerId);
     });
     portrait.addEventListener("pointermove", event => {
       if (!drag || drag.pointerId !== event.pointerId) return;
-      state.photo.x = drag.originX + event.clientX - drag.startX;
-      state.photo.y = drag.originY + event.clientY - drag.startY;
-      applyPhotoTransform(); scheduleSave();
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (drag.mode === "frame") {
+        state.photo.frameX = Math.min(drag.maxX, Math.max(drag.minX, drag.originX + dx));
+        state.photo.frameY = Math.min(drag.maxY, Math.max(drag.minY, drag.originY + dy));
+      } else {
+        state.photo.x = drag.originX + dx;
+        state.photo.y = drag.originY + dy;
+      }
+      applyPhotoTransform(); scheduleSave(drag.mode === "frame" ? "移动照片框" : "调整照片构图");
     });
-    portrait.addEventListener("pointerup", () => { drag = null; });
-    portrait.addEventListener("pointercancel", () => { drag = null; });
+    const stop = () => { portrait.classList.remove("is-dragging"); drag = null; };
+    portrait.addEventListener("pointerup", stop);
+    portrait.addEventListener("pointercancel", stop);
   }
 
   function checkOverflow() {
@@ -412,7 +618,7 @@
     paper.classList.toggle("has-overflow", hasOverflow);
     $("#pageBadge").className = `page-badge ${hasOverflow ? "bad" : "ok"}`;
     $("#pageBadge").innerHTML = `<i></i><strong>${hasOverflow ? "内容已溢出" : "单页范围内"}</strong>`;
-    $("#pageDetail").textContent = hasOverflow ? `溢出位置：${overflowing?.dataset.module || "页面底部"}。请精简该模块内容。` : "内容未超出 A4 打印边界。";
+    $("#pageDetail").textContent = hasOverflow ? `溢出位置：${overflowing?.dataset.module || "页面底部"}。请精简该模块内容。` : "内容未超出 A4 单页导出边界。";
     const toast = $("#overflowToast");
     toast.textContent = hasOverflow ? `⚠ ${overflowing?.dataset.module || "页面底部"} 超出 A4 单页边界` : "";
     toast.classList.toggle("visible", hasOverflow);
@@ -491,7 +697,7 @@
     next.photo = state.photo;
     next.appearance = state.appearance;
     setActiveState(next);
-    render(); persist();
+    render(); persist({ recordHistory: true, label: "导入 Markdown" });
     showModal("导入完成", "简历内容已替换，排版、字号、网格和照片位置保持不变。", null, false);
   }
 
@@ -737,9 +943,10 @@
         ], project ? [5320, 1220, 1720, 1990] : [3280, 2460, 2550, 1960]));
         if (item.summary) children.push(paragraph(`${key}.${i}.summary`, item.summary, { keepNext: true }));
         item.bullets.forEach((bullet, j) => {
-          const marker = markerText(j, state.appearance.markers[key]);
+          const path = `${key}.${i}.bullets.${j}`;
+          const marker = markerText(j, markerStyleFor(path, state.appearance.markers[key]));
           children.push(new Paragraph({
-            children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(`${key}.${i}.bullets.${j}`, bullet, { autoLead: true })],
+            children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(path, bullet, { autoLead: true })],
             indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) }
           }));
         });
@@ -749,10 +956,18 @@
     addEntries("项目经历", state.projects, "projects", true);
     (state.customSections || []).forEach((section, i) => {
       addHeading(section.title);
-      section.items.forEach((item, j) => children.push(new Paragraph({ children: [new TextRun({ text: "➤ ", font, size: baseSize }), ...wordRuns(`customSections.${i}.items.${j}`, item, { autoLead: true })], indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) } })));
+      section.items.forEach((item, j) => {
+        const path = `customSections.${i}.items.${j}`;
+        const marker = markerText(j, markerStyleFor(path, "arrow"));
+        children.push(new Paragraph({ children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(path, item, { autoLead: true })], indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) } }));
+      });
     });
     addHeading("技能与优势");
-    state.skills.forEach((item, i) => children.push(new Paragraph({ children: [new TextRun({ text: `${markerText(i, state.appearance.markers.skills)} `, font, size: baseSize }), ...wordRuns(`skills.${i}`, item, { autoLead: true })], indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) } })));
+    state.skills.forEach((item, i) => {
+      const path = `skills.${i}`;
+      const marker = markerText(i, markerStyleFor(path, state.appearance.markers.skills));
+      children.push(new Paragraph({ children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(path, item, { autoLead: true })], indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) } }));
+    });
     return { document: new Document({ sections: [{ properties: { page: { size: { width: 11906, height: 16838, orientation: PageOrientation.PORTRAIT }, margin: { top: 748, right: 828, bottom: 567, left: 828 } } }, children }] }), Packer };
   }
 
@@ -782,7 +997,7 @@
       const candidate = parsed.data || (!incomingWorkspace ? parsed : null);
       if (incomingWorkspace?.versions?.length) {
         showModal("恢复完整版本库？", "当前母版、岗位版本和 JD 都会被备份文件替换。", () => {
-          workspace = { ...incomingWorkspace, versions: incomingWorkspace.versions.map(item => ({ ...item, data: normalizeResume(item.data) })) };
+          workspace = { ...incomingWorkspace, versions: incomingWorkspace.versions.map(normalizeVersion) };
           workspace.activeId = workspace.versions.some(item => item.id === workspace.activeId) ? workspace.activeId : workspace.versions[0].id;
           state = activeVersion().data;
           render(); persist();
@@ -799,13 +1014,14 @@
     const value = numeric ? Number(rawValue) : rawValue;
     if (numeric && !Number.isFinite(value)) return;
     state.appearance[key] = value;
-    applyAppearance(); scheduleSave();
+    applyAppearance(); scheduleSave(`调整${({ font: "字体", fontSize: "字号", ruleWidth: "横线", lineHeight: "行距" })[key] || "排版"}`);
   }
 
   function populateMarkerControls() {
     ["experienceMarker", "projectMarker", "skillsMarker"].forEach(id => {
       $("#" + id).innerHTML = MARKER_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
     });
+    $("#itemMarker").innerHTML = `<option value="inherit">跟随模块默认</option>${MARKER_OPTIONS.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}`;
   }
 
   function showModal(title, message, action, showCancel = true) {
@@ -825,6 +1041,10 @@
 
   function wireControls() {
     populateMarkerControls();
+    $("#historyBtn").addEventListener("click", event => { event.stopPropagation(); setHistoryOpen($("#historyPopover").hidden); });
+    $("#closeHistoryBtn").addEventListener("click", () => setHistoryOpen(false));
+    $("#historyPopover").addEventListener("click", event => event.stopPropagation());
+    document.addEventListener("click", () => setHistoryOpen(false));
     $("#createVersionBtn").addEventListener("click", () => createVersion());
     $("#duplicateVersionBtn").addEventListener("click", duplicateVersion);
     $("#deleteVersionBtn").addEventListener("click", deleteVersion);
@@ -845,18 +1065,38 @@
     $("#lineHeightRange").addEventListener("input", event => updateAppearance("lineHeight", event.target.value));
     ["ruleWidthRange", "ruleWidthNumber"].forEach(id => $("#" + id).addEventListener("input", event => updateAppearance("ruleWidth", event.target.value)));
     [["experienceMarker", "experience"], ["projectMarker", "projects"], ["skillsMarker", "skills"]].forEach(([id, key]) => $("#" + id).addEventListener("change", event => {
-      state.appearance.markers[key] = event.target.value; render(); scheduleSave();
+      state.appearance.markers[key] = event.target.value; render(); scheduleSave(`修改${key === "experience" ? "实习" : key === "projects" ? "项目" : "技能"}模块默认序号`);
     }));
+    $("#itemMarker").addEventListener("change", event => {
+      if (!selectedListPath) return;
+      state.appearance.itemMarkers ||= {};
+      if (event.target.value === "inherit") delete state.appearance.itemMarkers[selectedListPath];
+      else state.appearance.itemMarkers[selectedListPath] = event.target.value;
+      render();
+      scheduleSave("修改当前段落序号");
+    });
+    $("#deleteSelectedRowBtn").addEventListener("click", () => {
+      if (selectedListPath) deleteListRow(selectedListPath);
+    });
     $("#resetStyleBtn").addEventListener("click", () => {
-      state.appearance = clone(window.INITIAL_RESUME.appearance); render(); scheduleSave();
+      state.appearance = clone(window.INITIAL_RESUME.appearance); selectedListPath = null; render(); scheduleSave("恢复模板样式");
     });
     $("#resetBtn").addEventListener("click", () => {
       const current = activeVersion();
       const source = current.isMaster ? window.INITIAL_RESUME : workspace.versions.find(item => item.isMaster)?.data || window.INITIAL_RESUME;
       showModal("恢复当前版本？", current.isMaster ? "母版内容将恢复为首次打开时的状态。其他岗位版本不会受影响。" : "当前岗位版本将重新复制母版内容，已填写的公司、岗位和 JD 会保留。", () => { setActiveState(clone(source)); render(); persist(); });
     });
-    $("#photoResetBtn").addEventListener("click", () => { state.photo.scale = 1; state.photo.x = 0; state.photo.y = 0; applyPhotoTransform(); persist(); });
-    $("#photoScale").addEventListener("input", event => { state.photo.scale = Number(event.target.value) / 100; applyPhotoTransform(); scheduleSave(); });
+    $$('[data-photo-mode]').forEach(button => button.addEventListener("click", () => {
+      photoDragMode = button.dataset.photoMode;
+      $$('[data-photo-mode]').forEach(item => item.classList.toggle("active", item === button));
+      applyPhotoTransform();
+      $(".photo-tools .hint-inline").textContent = photoDragMode === "frame" ? "直接拖动相框" : "拖动框内照片";
+    }));
+    $("#photoResetBtn").addEventListener("click", () => {
+      Object.assign(state.photo, { scale: 1, x: 0, y: 0, frameX: 0, frameY: 0 });
+      applyPhotoTransform(); persist({ recordHistory: true, label: "还原照片位置" });
+    });
+    $("#photoScale").addEventListener("input", event => { state.photo.scale = Number(event.target.value) / 100; applyPhotoTransform(); scheduleSave("缩放照片"); });
     $("#photoInput").addEventListener("change", event => handlePhoto(event.target.files[0]));
     $("#markdownInput").addEventListener("change", event => event.target.files[0] && readFile(event.target.files[0], importMarkdown));
     $("#sourceResumeInput").addEventListener("change", event => convertSourceDocument(event.target.files[0]));
@@ -866,6 +1106,12 @@
     $("#modalConfirm").addEventListener("click", () => closeModal(true));
     $("#modal").addEventListener("click", event => { if (event.target.id === "modal") closeModal(false); });
     window.addEventListener("resize", checkOverflow);
+    window.addEventListener("keydown", event => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault(); clearTimeout(saveTimer); persist({ recordHistory: true, label: "手动保存" });
+      }
+      if (event.key === "Escape") setHistoryOpen(false);
+    });
 
     const dz = $("#markdownDropzone");
     ["dragenter", "dragover"].forEach(type => dz.addEventListener(type, event => { event.preventDefault(); dz.classList.add("dragover"); }));
@@ -878,10 +1124,12 @@
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { showModal("图片格式不支持", "请选择 JPG、PNG 或 WebP 文件。", null, false); return; }
     if (file.size > PHOTO_LIMIT) { showModal("图片过大", "请选择 3 MB 以内的照片，以免浏览器本地存储空间不足。", null, false); return; }
     const reader = new FileReader();
-    reader.onload = () => { state.photo = { src: reader.result, scale: 1, x: 0, y: 0 }; applyPhotoTransform(); $("#portraitImage").src = reader.result; persist(); };
+    reader.onload = () => { state.photo = { src: reader.result, scale: 1, x: 0, y: 0, frameX: 0, frameY: 0 }; applyPhotoTransform(); $("#portraitImage").src = reader.result; persist({ recordHistory: true, label: "更换照片" }); };
     reader.readAsDataURL(file);
   }
 
+  if (!(activeVersion().history || []).length) recordHistory("打开时状态");
   wireControls();
   render();
+  persist();
 })();
