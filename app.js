@@ -31,6 +31,8 @@
   let photoDragMode = "frame";
   let selectedListPath = null;
   let selectedSectionKey = null;
+  let selectedExperienceIndex = null;
+  let selectedProjectGroupIndex = 0;
   let convertedDocument = null;
 
   function normalizeResume(candidate) {
@@ -149,6 +151,31 @@
     return `<li data-list-path="${path}"><span class="list-marker" aria-hidden="true">${markerText(index, resolved)}</span><span class="edit-cell list-content" contenteditable="true" spellcheck="false" data-path="${path}">${content}</span><button class="row-delete" type="button" data-delete-row="${path}" title="删除整行" aria-label="删除这一整行">×</button></li>`;
   }
 
+  function experienceProjectGroups(item) {
+    if (Array.isArray(item.projectGroups) && item.projectGroups.length) return item.projectGroups;
+    return [{ summary: item.summary || "", bullets: Array.isArray(item.bullets) ? item.bullets : [], numbering: "restart", legacy: true }];
+  }
+
+  function experienceProjectPath(item, entryIndex, groupIndex) {
+    return Array.isArray(item.projectGroups) ? `experience.${entryIndex}.projectGroups.${groupIndex}` : `experience.${entryIndex}`;
+  }
+
+  function experienceProjectsHtml(item, entryIndex) {
+    const groups = experienceProjectGroups(item);
+    let previousStart = 0;
+    let previousLength = 0;
+    return groups.map((group, groupIndex) => {
+      const markerStart = groupIndex > 0 && group.numbering === "continue" ? previousStart + previousLength : 0;
+      previousStart = markerStart;
+      previousLength = group.bullets.length;
+      const basePath = experienceProjectPath(item, entryIndex, groupIndex);
+      return `<div class="experience-project" data-experience-index="${entryIndex}" data-project-group-index="${groupIndex}">
+        ${editable(group.summary, `${basePath}.summary`, "entry-summary project-summary")}
+        <ol class="entry-list">${group.bullets.map((bullet, bulletIndex) => listItem(bullet, `${basePath}.bullets.${bulletIndex}`, markerStart + bulletIndex, state.appearance.markers.experience)).join("")}</ol>
+      </div>`;
+    }).join("");
+  }
+
   function renderVersionUI() {
     const current = activeVersion();
     $("#currentVersionTitle").textContent = current.name || "未命名版本";
@@ -208,6 +235,7 @@
       current.jd = snapshot.jd ?? current.jd;
       selectedListPath = null;
       selectedSectionKey = null;
+      selectedExperienceIndex = null;
       render();
       persist({ recordHistory: true, label: `已恢复 · ${formatHistoryTime(snapshot.savedAt)}` });
       setHistoryOpen(false);
@@ -227,6 +255,7 @@
     state = activeVersion().data;
     selectedListPath = null;
     selectedSectionKey = null;
+    selectedExperienceIndex = null;
     render();
     persist();
     $(".stage").scrollTop = 0;
@@ -240,6 +269,7 @@
     workspace.activeId = version.id;
     state = version.data;
     selectedSectionKey = null;
+    selectedExperienceIndex = null;
     recordHistory("创建版本");
     render();
     persist();
@@ -253,6 +283,7 @@
     workspace.activeId = version.id;
     state = version.data;
     selectedSectionKey = null;
+    selectedExperienceIndex = null;
     recordHistory("复制版本");
     render();
     persist();
@@ -311,6 +342,7 @@
     bindSectionSpacingTargets();
     syncMarkerTargetUI();
     syncSectionSpacingUI();
+    syncExperienceProjectUI();
     requestAnimationFrame(checkOverflow);
   }
 
@@ -343,15 +375,14 @@
 
   function entriesHtml(items, key, projects = false) {
     return items.map((item, i) => `
-      <article class="entry ${projects ? "project-entry" : ""}">
+      <article class="entry ${projects ? "project-entry" : ""}" ${key === "experience" ? `data-experience-index="${i}"` : ""}>
         <div class="entry-header">
           ${editable(item.company, `${key}.${i}.company`, "company")}
           ${editable(item.team, `${key}.${i}.team`, "team")}
           ${editable(item.role, `${key}.${i}.role`, "role")}
           ${editable(item.date, `${key}.${i}.date`, "date")}
         </div>
-        ${editable(item.summary, `${key}.${i}.summary`, "entry-summary")}
-        <ol class="entry-list">${item.bullets.map((bullet, j) => listItem(bullet, `${key}.${i}.bullets.${j}`, j, state.appearance.markers[key])).join("")}</ol>
+        ${key === "experience" ? experienceProjectsHtml(item, i) : `${editable(item.summary, `${key}.${i}.summary`, "entry-summary")}<ol class="entry-list">${item.bullets.map((bullet, j) => listItem(bullet, `${key}.${i}.bullets.${j}`, j, state.appearance.markers[key])).join("")}</ol>`}
       </article>`).join("");
   }
 
@@ -429,7 +460,20 @@
 
   function selectListParagraph(path) {
     selectedListPath = path;
+    const grouped = String(path).match(/^experience\.(\d+)\.projectGroups\.(\d+)\.bullets\./);
+    const legacy = String(path).match(/^experience\.(\d+)\.bullets\./);
+    if (grouped) {
+      selectedExperienceIndex = Number(grouped[1]);
+      selectedProjectGroupIndex = Number(grouped[2]);
+    } else if (legacy) {
+      selectedExperienceIndex = Number(legacy[1]);
+      selectedProjectGroupIndex = 0;
+    } else {
+      selectedExperienceIndex = null;
+      selectedProjectGroupIndex = 0;
+    }
     syncMarkerTargetUI();
+    syncExperienceProjectUI();
   }
 
   function syncMarkerTargetUI() {
@@ -503,6 +547,36 @@
     requestAnimationFrame(checkOverflow);
   }
 
+  function syncExperienceProjectUI() {
+    const hint = $("#experienceProjectHint");
+    const addProject = $("#addExperienceProjectBtn");
+    const addBullet = $("#addExperienceBulletBtn");
+    const numbering = $("#projectNumberingMode");
+    const removeProject = $("#deleteExperienceProjectBtn");
+    if (!hint || !addProject || !addBullet || !numbering || !removeProject) return;
+    const item = Number.isInteger(selectedExperienceIndex) ? state.experience?.[selectedExperienceIndex] : null;
+    const groups = item ? experienceProjectGroups(item) : [];
+    const groupIndex = Math.min(selectedProjectGroupIndex, Math.max(0, groups.length - 1));
+    const group = groups[groupIndex];
+    $$("[data-project-group-index]").forEach(node => {
+      const active = Number(node.dataset.experienceIndex) === selectedExperienceIndex && Number(node.dataset.projectGroupIndex) === groupIndex;
+      node.classList.toggle("project-target", active);
+    });
+    const enabled = Boolean(item && group);
+    addProject.disabled = addBullet.disabled = !enabled;
+    numbering.disabled = !enabled || groupIndex === 0;
+    removeProject.disabled = !enabled || groups.length <= 1;
+    if (!enabled) {
+      hint.textContent = "点击实习经历中的公司、项目概括或小点";
+      numbering.value = "restart";
+      return;
+    }
+    selectedProjectGroupIndex = groupIndex;
+    const summary = String(group.summary || "未填写项目概括");
+    hint.textContent = `${item.company} · ${summary.slice(0, 18)}${summary.length > 18 ? "…" : ""}`;
+    numbering.value = groupIndex === 0 ? "restart" : (group.numbering === "continue" ? "continue" : "restart");
+  }
+
   function cleanRich(html) {
     const template = document.createElement("template");
     template.innerHTML = html;
@@ -541,6 +615,13 @@
   }
 
   function bindPaperActions() {
+    $$("[data-experience-index].entry").forEach(entry => entry.addEventListener("pointerdown", event => {
+      if (event.target.closest("[data-delete-row]")) return;
+      const group = event.target.closest("[data-project-group-index]");
+      selectedExperienceIndex = Number(entry.dataset.experienceIndex);
+      selectedProjectGroupIndex = group ? Number(group.dataset.projectGroupIndex) : 0;
+      syncExperienceProjectUI();
+    }));
     $$("[data-list-path]").forEach(row => row.addEventListener("pointerdown", event => {
       if (event.target.closest("[data-delete-row]")) return;
       selectListParagraph(row.dataset.listPath);
@@ -575,6 +656,110 @@
     return result;
   }
 
+  function shiftIndexedRecord(record, parentPath, fromIndex, amount) {
+    const result = {};
+    const prefix = `${parentPath}.`;
+    Object.entries(record || {}).forEach(([key, value]) => {
+      if (!key.startsWith(prefix)) { result[key] = value; return; }
+      const remainder = key.slice(prefix.length);
+      const match = remainder.match(/^(\d+)(.*)$/);
+      if (!match) { result[key] = value; return; }
+      const index = Number(match[1]);
+      const nextIndex = index >= fromIndex ? index + amount : index;
+      result[`${prefix}${nextIndex}${match[2]}`] = value;
+    });
+    return result;
+  }
+
+  function moveRecordPrefix(record, fromPrefix, toPrefix) {
+    const result = {};
+    Object.entries(record || {}).forEach(([key, value]) => {
+      result[key.startsWith(fromPrefix) ? `${toPrefix}${key.slice(fromPrefix.length)}` : key] = value;
+    });
+    return result;
+  }
+
+  function ensureExperienceProjectGroups(entryIndex) {
+    const item = state.experience?.[entryIndex];
+    if (!item) return null;
+    if (Array.isArray(item.projectGroups) && item.projectGroups.length) return item.projectGroups;
+    item.projectGroups = [{
+      summary: item.summary || "",
+      bullets: Array.isArray(item.bullets) ? [...item.bullets] : [],
+      numbering: "restart"
+    }];
+    const legacyPrefix = `experience.${entryIndex}`;
+    const groupedPrefix = `${legacyPrefix}.projectGroups.0`;
+    state.rich = moveRecordPrefix(state.rich, `${legacyPrefix}.summary`, `${groupedPrefix}.summary`);
+    state.rich = moveRecordPrefix(state.rich, `${legacyPrefix}.bullets.`, `${groupedPrefix}.bullets.`);
+    state.appearance.itemMarkers = moveRecordPrefix(state.appearance.itemMarkers, `${legacyPrefix}.bullets.`, `${groupedPrefix}.bullets.`);
+    delete item.summary;
+    delete item.bullets;
+    return item.projectGroups;
+  }
+
+  function focusEditablePath(path) {
+    requestAnimationFrame(() => {
+      const target = $(`[data-path="${CSS.escape(path)}"]`);
+      if (!target) return;
+      target.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+  }
+
+  function addExperienceProject() {
+    if (!Number.isInteger(selectedExperienceIndex)) return;
+    const groups = ensureExperienceProjectGroups(selectedExperienceIndex);
+    if (!groups) return;
+    const insertAt = Math.min(selectedProjectGroupIndex + 1, groups.length);
+    const parentPath = `experience.${selectedExperienceIndex}.projectGroups`;
+    state.rich = shiftIndexedRecord(state.rich, parentPath, insertAt, 1);
+    state.appearance.itemMarkers = shiftIndexedRecord(state.appearance.itemMarkers, parentPath, insertAt, 1);
+    groups.splice(insertAt, 0, { summary: "项目：请填写项目概括", bullets: ["请填写详细内容"], numbering: "restart" });
+    selectedProjectGroupIndex = insertAt;
+    selectedListPath = null;
+    render();
+    scheduleSave("新增实习项目");
+    focusEditablePath(`${parentPath}.${insertAt}.summary`);
+  }
+
+  function addExperienceBullet() {
+    if (!Number.isInteger(selectedExperienceIndex)) return;
+    const groups = ensureExperienceProjectGroups(selectedExperienceIndex);
+    const group = groups?.[selectedProjectGroupIndex];
+    if (!group) return;
+    group.bullets ||= [];
+    group.bullets.push("请填写详细内容");
+    const path = `experience.${selectedExperienceIndex}.projectGroups.${selectedProjectGroupIndex}.bullets.${group.bullets.length - 1}`;
+    selectedListPath = path;
+    render();
+    scheduleSave("新增项目小点");
+    focusEditablePath(path);
+  }
+
+  function deleteExperienceProject() {
+    if (!Number.isInteger(selectedExperienceIndex)) return;
+    const groups = ensureExperienceProjectGroups(selectedExperienceIndex);
+    if (!groups || groups.length <= 1) return;
+    const deleteIndex = selectedProjectGroupIndex;
+    const summary = String(groups[deleteIndex]?.summary || "当前项目");
+    showModal("删除这个实习项目？", `${summary.slice(0, 36)}${summary.length > 36 ? "…" : ""}。项目概括和它下面的全部小点都会删除。`, () => {
+      groups.splice(deleteIndex, 1);
+      if (groups[0]) groups[0].numbering = "restart";
+      const parentPath = `experience.${selectedExperienceIndex}.projectGroups`;
+      state.rich = remapIndexedRecord(state.rich, parentPath, deleteIndex);
+      state.appearance.itemMarkers = remapIndexedRecord(state.appearance.itemMarkers, parentPath, deleteIndex);
+      selectedProjectGroupIndex = Math.max(0, Math.min(deleteIndex, groups.length - 1));
+      selectedListPath = null;
+      render();
+      scheduleSave("删除实习项目");
+    });
+  }
+
   function deleteListRow(path) {
     const parts = String(path || "").split(".");
     const index = Number(parts.pop());
@@ -602,7 +787,8 @@
 
   function addRow(key) {
     if (key === "education") state.education.push({ school: "学校名称", major: "专业 / 学历", date: "起止时间", note: "" });
-    else if (key === "experience" || key === "projects") state[key].push({ company: "机构 / 项目名称", team: "部门", role: "职位", date: "起止时间", summary: "", bullets: ["请填写职责或成果"] });
+    else if (key === "experience") state.experience.push({ company: "机构名称", team: "部门", role: "职位", date: "起止时间", projectGroups: [{ summary: "项目：请填写项目概括", bullets: ["请填写详细内容"], numbering: "restart" }] });
+    else if (key === "projects") state.projects.push({ company: "项目名称", team: "", role: "角色", date: "起止时间", summary: "", bullets: ["请填写职责或成果"] });
     else if (key === "skills") state.skills.push("请填写技能或优势");
     else if (key.startsWith("custom:")) state.customSections[Number(key.split(":")[1])].items.push("请填写内容");
     render(); scheduleSave("新增简历内容");
@@ -802,31 +988,58 @@
     const eduRows = parseTable(sections["教育经历"] || []);
     if (eduRows.length) data.education = eduRows.map(row => ({ school: row[0] || "", major: row[1] || "", date: row[2] || "", note: row[3] || "" }));
 
-    data.experience = parseEntries(sections["实习经历"] || []);
+    data.experience = parseEntries(sections["实习经历"] || [], true);
     data.projects = parseEntries(sections["项目经历"] || []);
     const skillLines = (sections["技能与优势"] || []).filter(line => /^\s*\d+\.\s+/.test(line));
     if (skillLines.length) data.skills = skillLines.map(line => line.replace(/^\s*\d+\.\s+/, "").trim());
     return data;
   }
 
-  function parseEntries(lines) {
+  function parseEntries(lines, grouped = false) {
     const items = [];
     let entry = null;
+    let currentGroup = null;
+    let pendingNumbering = "restart";
     lines.forEach(line => {
       const head = line.match(/^###\s+(.+)/);
       if (head) {
         const parts = head[1].split("｜").map(part => part.trim());
-        entry = { company: parts[0] || "", team: parts[1] || "", role: parts[2] || "", date: parts[3] || "", summary: "", bullets: [] };
+        entry = grouped
+          ? { company: parts[0] || "", team: parts[1] || "", role: parts[2] || "", date: parts[3] || "", projectGroups: [] }
+          : { company: parts[0] || "", team: parts[1] || "", role: parts[2] || "", date: parts[3] || "", summary: "", bullets: [] };
         items.push(entry);
-      } else if (entry && /^>\s*/.test(line)) entry.summary = line.replace(/^>\s*/, "").trim();
-      else if (entry && /^[-*]\s+/.test(line)) entry.bullets.push(line.replace(/^[-*]\s+/, "").trim());
+        currentGroup = null;
+        pendingNumbering = "restart";
+      } else if (grouped && /^<!--\s*编号:(重新开始|延续上一组)\s*-->$/.test(line)) {
+        pendingNumbering = line.includes("延续上一组") ? "continue" : "restart";
+      } else if (entry && /^>\s*/.test(line)) {
+        if (grouped) {
+          currentGroup = { summary: line.replace(/^>\s*/, "").trim(), bullets: [], numbering: pendingNumbering };
+          entry.projectGroups.push(currentGroup);
+          pendingNumbering = "restart";
+        } else entry.summary = line.replace(/^>\s*/, "").trim();
+      } else if (entry && /^[-*]\s+/.test(line)) {
+        if (grouped) {
+          if (!currentGroup) {
+            currentGroup = { summary: "", bullets: [], numbering: pendingNumbering };
+            entry.projectGroups.push(currentGroup);
+            pendingNumbering = "restart";
+          }
+          currentGroup.bullets.push(line.replace(/^[-*]\s+/, "").trim());
+        } else entry.bullets.push(line.replace(/^[-*]\s+/, "").trim());
+      }
     });
+    if (grouped) items.forEach(item => { if (!item.projectGroups.length) item.projectGroups.push({ summary: "", bullets: [], numbering: "restart" }); });
     return items;
   }
 
   function exportMarkdown() {
     const entryText = items => items.map(item => `### ${item.company}｜${item.team}｜${item.role}｜${item.date}\n${item.summary ? `> ${item.summary}\n` : ""}${item.bullets.map(b => `- ${b}`).join("\n")}`).join("\n\n");
-    const markdown = `# ${state.profile.name}\n\n- 手机：${state.profile.phone}\n- 邮箱：${state.profile.email}\n- 主页/微信：${state.profile.homepage}\n\n## 教育经历\n\n| 学校 | 专业/学历 | 时间 | 备注 |\n| --- | --- | --- | --- |\n${state.education.map(item => `| ${item.school} | ${item.major} | ${item.date} | ${item.note || ""} |`).join("\n")}\n\n## 实习经历\n\n${entryText(state.experience)}\n\n## 项目经历\n\n${entryText(state.projects)}\n\n## 技能与优势\n\n${state.skills.map((item, i) => `${i + 1}. ${item}`).join("\n")}`;
+    const experienceText = state.experience.map(item => {
+      const groups = experienceProjectGroups(item).map(group => `<!-- 编号:${group.numbering === "continue" ? "延续上一组" : "重新开始"} -->\n${group.summary ? `> ${group.summary}\n` : ""}${group.bullets.map(bullet => `- ${bullet}`).join("\n")}`).join("\n");
+      return `### ${item.company}｜${item.team}｜${item.role}｜${item.date}\n${groups}`;
+    }).join("\n\n");
+    const markdown = `# ${state.profile.name}\n\n- 手机：${state.profile.phone}\n- 邮箱：${state.profile.email}\n- 主页/微信：${state.profile.homepage}\n\n## 教育经历\n\n| 学校 | 专业/学历 | 时间 | 备注 |\n| --- | --- | --- | --- |\n${state.education.map(item => `| ${item.school} | ${item.major} | ${item.date} | ${item.note || ""} |`).join("\n")}\n\n## 实习经历\n\n${experienceText}\n\n## 项目经历\n\n${entryText(state.projects)}\n\n## 技能与优势\n\n${state.skills.map((item, i) => `${i + 1}. ${item}`).join("\n")}`;
     downloadBlob(markdown, `${state.profile.name}-简历.md`, "text/markdown;charset=utf-8");
   }
 
@@ -1019,14 +1232,24 @@
           [new Paragraph({ children: wordRuns(`${key}.${i}.role`, item.role), alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 } })],
           [new Paragraph({ children: wordRuns(`${key}.${i}.date`, item.date), alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 } })]
         ], project ? [5320, 1220, 1720, 1990] : [3280, 2460, 2550, 1960]));
-        if (item.summary) children.push(paragraph(`${key}.${i}.summary`, item.summary, { keepNext: true }));
-        item.bullets.forEach((bullet, j) => {
-          const path = `${key}.${i}.bullets.${j}`;
-          const marker = markerText(j, markerStyleFor(path, state.appearance.markers[key]));
-          children.push(new Paragraph({
-            children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(path, bullet, { autoLead: true })],
-            indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) }
-          }));
+        const groups = key === "experience"
+          ? experienceProjectGroups(item).map((group, groupIndex) => ({ group, path: experienceProjectPath(item, i, groupIndex) }))
+          : [{ group: item, path: `${key}.${i}` }];
+        let previousStart = 0;
+        let previousLength = 0;
+        groups.forEach(({ group, path }, groupIndex) => {
+          const markerStart = groupIndex > 0 && group.numbering === "continue" ? previousStart + previousLength : 0;
+          previousStart = markerStart;
+          previousLength = group.bullets.length;
+          if (group.summary) children.push(paragraph(`${path}.summary`, group.summary, { keepNext: Boolean(group.bullets.length) }));
+          group.bullets.forEach((bullet, bulletIndex) => {
+            const bulletPath = `${path}.bullets.${bulletIndex}`;
+            const marker = markerText(markerStart + bulletIndex, markerStyleFor(bulletPath, state.appearance.markers[key]));
+            children.push(new Paragraph({
+              children: [new TextRun({ text: marker ? `${marker} ` : "", font, size: baseSize }), ...wordRuns(bulletPath, bullet, { autoLead: true })],
+              indent: { left: 300, hanging: 250 }, spacing: { before: 0, after: 0, line: Math.round(Number(state.appearance.lineHeight) * 240) }
+            }));
+          });
         });
       });
     };
@@ -1169,6 +1392,17 @@
       syncSectionSpacingUI();
       scheduleSave(`恢复模块间距 · ${target?.dataset.module || "当前模块"}`);
       requestAnimationFrame(checkOverflow);
+    });
+    $("#addExperienceProjectBtn").addEventListener("click", addExperienceProject);
+    $("#addExperienceBulletBtn").addEventListener("click", addExperienceBullet);
+    $("#deleteExperienceProjectBtn").addEventListener("click", deleteExperienceProject);
+    $("#projectNumberingMode").addEventListener("change", event => {
+      if (!Number.isInteger(selectedExperienceIndex) || selectedProjectGroupIndex === 0) return;
+      const groups = ensureExperienceProjectGroups(selectedExperienceIndex);
+      if (!groups?.[selectedProjectGroupIndex]) return;
+      groups[selectedProjectGroupIndex].numbering = event.target.value === "continue" ? "continue" : "restart";
+      render();
+      scheduleSave(event.target.value === "continue" ? "项目编号延续上一组" : "项目编号从 1 开始");
     });
     $("#resetStyleBtn").addEventListener("click", () => {
       state.appearance = clone(window.INITIAL_RESUME.appearance); selectedListPath = null; render(); scheduleSave("恢复模板样式");

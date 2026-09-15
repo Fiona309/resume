@@ -7,7 +7,7 @@
     <meta name="description" content="本地运行的 A4 单页简历编辑器，支持母版、多岗位版本、JD 管理以及 Word/PDF 导出。" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 fill=%22%23181714%22/><text x=%2232%22 y=%2243%22 text-anchor=%22middle%22 font-size=%2238%22 fill=%22%23fff%22>履</text></svg>" />
     <title>A4 简历排版器 · 费婉燕</title>
-    <link rel="stylesheet" href="styles.css?v=20260915-2" />
+    <link rel="stylesheet" href="styles.css?v=20260915-3" />
   </head>
   <body>
     <header class="topbar">
@@ -131,6 +131,20 @@
           <input id="sectionSpacingRange" type="range" min="0" max="8" step="0.1" value="1.1" disabled />
           <button id="resetSectionSpacingBtn" class="button secondary full compact" type="button" disabled>恢复当前模块默认间距</button>
         </section>
+        <section class="panel-section experience-project-tools">
+          <h2>当前实习项目</h2>
+          <p id="experienceProjectHint" class="selection-hint">点击实习经历中的公司、项目概括或小点</p>
+          <div class="project-action-grid">
+            <button id="addExperienceProjectBtn" class="button secondary compact" type="button" disabled>＋ 新项目</button>
+            <button id="addExperienceBulletBtn" class="button secondary compact" type="button" disabled>＋ 新小点</button>
+          </div>
+          <label class="control-label" for="projectNumberingMode">本组编号</label>
+          <select id="projectNumberingMode" class="select-control marker-select" disabled>
+            <option value="restart">从 1 开始</option>
+            <option value="continue">延续上一组</option>
+          </select>
+          <button id="deleteExperienceProjectBtn" class="button row-delete-action full" type="button" disabled>删除当前项目及其小点</button>
+        </section>
         <section class="panel-section style-tools">
           <h2>当前段落序号</h2>
           <p id="markerTargetHint" class="selection-hint">先点击简历里带序号的段落</p>
@@ -204,6 +218,6 @@
     <script src="vendor/jspdf.umd.min.js"></script>
     <script src="vendor/docx.iife.js"></script>
     <script src="data.js"></script>
-    <script src="app.js?v=20260915-2"></script>
+    <script src="app.js?v=20260915-3"></script>
   </body>
 </html>
