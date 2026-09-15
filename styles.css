@@ -141,6 +141,8 @@ button, label, input[type="range"] { -webkit-tap-highlight-color: transparent; }
 
 .resume-section { position: relative; margin-top: 1.05mm; }
 .section-heading { height: 6.4mm; display: flex; align-items: flex-end; padding: 0 1.8mm .7mm; border-bottom: var(--rule-width) solid var(--rule); font-size: calc(var(--body-size) * 1.17); font-weight: 700; line-height: 1; letter-spacing: .08em; }
+.section-heading[data-spacing-target] { cursor: pointer; }
+.section-heading[data-spacing-target]:hover { background: rgba(201,75,44,.04); }
 .education-list { padding-top: .7mm; }
 .education-item { display: grid; grid-template-columns: 32% 34% 34%; min-height: 5.8mm; align-items: start; font-size: var(--body-size); line-height: calc(var(--body-line) * .96); }
 .education-item .school { font-weight: 700; }
@@ -182,7 +184,9 @@ button, label, input[type="range"] { -webkit-tap-highlight-color: transparent; }
 .paper.is-exporting .row-delete,
 .paper.is-exporting .portrait-hint,
 .paper.is-exporting .overflow-line { display: none !important; }
-.paper.is-exporting .spacing-target > .section-heading { box-shadow: none; background: transparent; }
+.paper.is-exporting .marker-target,
+.paper.is-exporting .spacing-target > .section-heading,
+.paper.is-exporting .section-heading[data-spacing-target]:hover { box-shadow: none !important; background: transparent !important; }
 .overflow-toast { position: sticky; bottom: 18px; z-index: 5; margin-top: 14px; padding: 9px 13px; color: #fff; background: #a93424; box-shadow: 0 5px 18px rgba(90,30,20,.25); font-size: 11px; opacity: 0; transform: translateY(6px); pointer-events: none; transition: .18s; }
 .overflow-toast.visible { opacity: 1; transform: none; }
 

@@ -317,7 +317,7 @@
   function section(title, content, module) {
     const addKey = ({ "教育经历":"education", "实习经历":"experience", "项目经历":"projects", "技能与优势":"skills" })[module];
     const key = addKey || module;
-    return `<section class="resume-section" data-module="${module}" data-section-key="${key}" style="margin-top:${sectionSpacingFor(key)}mm">${addKey ? `<button class="paper-add" type="button" data-add-row="${addKey}" title="在此模块新增一项">＋</button>` : ""}<div class="section-heading edit-cell" title="点击后可单独调整此模块上方间距">${title}</div>${content}</section>`;
+    return `<section class="resume-section" data-module="${module}" data-section-key="${key}" style="margin-top:${sectionSpacingFor(key)}mm">${addKey ? `<button class="paper-add" type="button" data-add-row="${addKey}" title="在此模块新增一项">＋</button>` : ""}<div class="section-heading edit-cell" data-spacing-target role="button" tabindex="0" title="点击后可单独调整此模块上方间距">${title}</div>${content}</section>`;
   }
 
   function customSectionHtml(item, index) {
@@ -326,7 +326,7 @@
     return `<section class="resume-section custom-section" data-module="${escapeHtml(item.title)}" data-section-key="${sectionKey}" style="margin-top:${sectionSpacingFor(sectionKey)}mm">
       <button class="paper-add" type="button" data-add-row="custom:${index}" title="新增一项">＋</button>
       <button class="paper-remove" type="button" data-remove-section="${index}" title="删除此板块">×</button>
-      <div class="section-heading edit-cell" contenteditable="true" spellcheck="false" data-path="${path}">${state.rich?.[path] || escapeHtml(item.title)}</div>
+      <div class="section-heading edit-cell" contenteditable="true" spellcheck="false" data-path="${path}" data-spacing-target title="点击后可单独调整此模块上方间距">${state.rich?.[path] || escapeHtml(item.title)}</div>
       <ol class="entry-list custom-list">${item.items.map((text, i) => listItem(text, `customSections.${index}.items.${i}`, i, "arrow")).join("")}</ol>
     </section>`;
   }
@@ -453,11 +453,20 @@
   }
 
   function bindSectionSpacingTargets() {
-    $$("[data-section-key] > .section-heading").forEach(heading => heading.addEventListener("pointerdown", () => {
+    const selectSection = heading => {
       const section = heading.closest("[data-section-key]");
+      if (!section) return;
       selectedSectionKey = section.dataset.sectionKey;
       syncSectionSpacingUI();
-    }));
+    };
+    $$("[data-spacing-target]").forEach(heading => {
+      heading.addEventListener("click", () => selectSection(heading));
+      if (!heading.isContentEditable) heading.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        selectSection(heading);
+      });
+    });
   }
 
   function syncSectionSpacingUI() {
