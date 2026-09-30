@@ -1075,8 +1075,8 @@
     showModal("内容超出 A4 单页", `溢出位置：${result.module}。继续导出会裁切到一张 A4 页面，建议先精简内容。`, task);
   }
 
-  async function exportPdf() {
-    if (!window.html2canvas || !window.jspdf?.jsPDF) throw new Error("PDF exporter unavailable");
+  async function capturePaperCanvas() {
+    if (!window.html2canvas) throw new Error("Image exporter unavailable");
     const paper = $("#paper");
     const active = document.activeElement;
     active?.blur?.();
@@ -1084,8 +1084,8 @@
     await document.fonts?.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     try {
-      const canvas = await window.html2canvas(paper, {
-        scale: 3,
+      return await window.html2canvas(paper, {
+        scale: 300 / 96,
         backgroundColor: "#ffffff",
         logging: false,
         useCORS: false,
@@ -1094,13 +1094,25 @@
         windowWidth: paper.offsetWidth,
         windowHeight: paper.offsetHeight
       });
-      const pdf = new window.jspdf.jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
-      pdf.setProperties({ title: `${state.profile.name} 简历`, subject: "A4 简历", creator: "A4 简历排版器" });
-      pdf.addImage(canvas.toDataURL("image/jpeg", .96), "JPEG", 0, 0, 210, 297, undefined, "FAST");
-      pdf.save(`${exportStem()}.pdf`);
     } finally {
       paper.classList.remove("is-exporting");
     }
+  }
+
+  async function exportPng() {
+    const canvas = await capturePaperCanvas();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("PNG encoding failed");
+    downloadBlob(blob, `${exportStem()}.png`, "image/png");
+  }
+
+  async function exportPdf() {
+    if (!window.jspdf?.jsPDF) throw new Error("PDF exporter unavailable");
+    const canvas = await capturePaperCanvas();
+    const pdf = new window.jspdf.jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+    pdf.setProperties({ title: `${state.profile.name} 简历`, subject: "A4 简历", creator: "A4 简历排版器" });
+    pdf.addImage(canvas.toDataURL("image/jpeg", .96), "JPEG", 0, 0, 210, 297, undefined, "FAST");
+    pdf.save(`${exportStem()}.pdf`);
   }
 
   function wordRuns(path, text, options = {}) {
@@ -1354,6 +1366,7 @@
     });
     $("#gridToggle").addEventListener("change", event => $("#paper").classList.toggle("show-grid", event.target.checked));
     $("#exportPdfBtn").addEventListener("click", () => runAfterOverflowCheck(() => withExportButton($("#exportPdfBtn"), "正在导出…", exportPdf)));
+    $("#exportPngBtn").addEventListener("click", () => runAfterOverflowCheck(() => withExportButton($("#exportPngBtn"), "正在导出…", exportPng)));
     $("#exportWordBtn").addEventListener("click", () => runAfterOverflowCheck(() => withExportButton($("#exportWordBtn"), "正在导出…", exportWord)));
     $("#downloadMdBtn").addEventListener("click", exportMarkdown);
     $("#addSectionBtn").addEventListener("click", addSection);
